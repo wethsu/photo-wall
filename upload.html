@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>📸 照片即時上傳 - 互動相片牆</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Canvas Confetti CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+  <!-- Firebase SDKs (Compat version for single-file portability) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .min-h-screen-dvh {
+      min-h: 100vh;
+      min-height: 100dvh;
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.90);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    .gradient-bg {
+      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #db2777 100%);
+    }
+    .pulse-ring {
+      animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.98); box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 14px rgba(99, 102, 241, 0); }
+      100% { transform: scale(0.98); box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+    }
+  </style>
+</head>
+<body class="gradient-bg min-h-screen-dvh min-h-screen flex flex-col justify-between text-gray-800 antialiased p-4 sm:p-6">
+
+  <!-- ========================================== -->
+  <!-- Firebase 設定彈窗 (未設定時自動顯示) -->
+  <!-- ========================================== -->
+  <div id="configModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+    <div class="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-4">
+      <div class="flex items-center space-x-2 text-indigo-600">
+        <i data-lucide="settings" class="w-6 h-6"></i>
+        <h3 class="text-xl font-black">設定 Firebase 金鑰</h3>
+      </div>
+      <p class="text-xs text-gray-600 leading-relaxed">
+        尚未偵測到有效的 Firebase 設定。請將 Firebase 控制台取得的 <code class="bg-indigo-50 px-1 py-0.5 rounded text-indigo-700 font-mono">firebaseConfig</code> 物件（JSON 格式）貼在下方：
+      </p>
+      <textarea id="configInput" rows="7" placeholder='{
+  "apiKey": "AIzaSy...",
+  "authDomain": "your-app.firebaseapp.com",
+  "projectId": "your-app",
+  "storageBucket": "your-app.firebasestorage.app",
+  "messagingSenderId": "...",
+  "appId": "..."
+}' class="w-full text-xs font-mono p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"></textarea>
+      <div class="flex space-x-2">
+        <button onclick="saveCustomConfig()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition text-sm shadow-md">
+          儲存並開始使用
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="text-center pt-2 pb-4 text-white">
+    <div class="inline-flex items-center justify-center p-3 bg-white/20 rounded-full mb-2 backdrop-blur-md shadow-inner">
+      <i data-lucide="camera" class="w-7 h-7 text-white"></i>
+    </div>
+    <h1 class="text-2xl font-black tracking-wider drop-shadow-md">即時互動相片牆</h1>
+    <p class="text-xs text-indigo-100 mt-1 font-medium tracking-wide">拍下精彩瞬間，即刻登上大螢幕！</p>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="w-full max-w-md mx-auto flex-1 flex flex-col justify-center my-2">
+
+    <!-- 步驟 1: 選擇/拍攝照片 -->
+    <div id="stepSelect" class="glass-card rounded-3xl p-6 shadow-2xl space-y-5 text-center transition-all duration-300">
+      
+      <!-- 隱藏的 Input 元素 -->
+      <!-- 1. 直接叫出後鏡頭相機 (capture="environment") -->
+      <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden" onchange="handleFileSelect(event)" />
+      <!-- 2. 從相簿中選取 -->
+      <input type="file" id="galleryInput" accept="image/*" class="hidden" onchange="handleFileSelect(event)" />
+
+      <div class="space-y-3 pt-2">
+        <button onclick="document.getElementById('cameraInput').click()" class="pulse-ring w-full flex items-center justify-center gap-3 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-bold py-4 px-6 rounded-2xl shadow-xl transition transform active:scale-95 text-lg">
+          <i data-lucide="aperture" class="w-6 h-6"></i>
+          <span>開啟相機拍照</span>
+        </button>
+
+        <button onclick="document.getElementById('galleryInput').click()" class="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-50 text-gray-800 font-bold py-3.5 px-6 rounded-2xl border-2 border-indigo-100 shadow-sm transition transform active:scale-95 text-base">
+          <i data-lucide="image" class="w-5 h-5 text-indigo-600"></i>
+          <span>從手機相簿選取</span>
+        </button>
+      </div>
+
+      <div class="flex items-center justify-center space-x-2 text-xs text-gray-500 pt-2 border-t border-gray-100">
+        <i data-lucide="zap" class="w-4 h-4 text-amber-500"></i>
+        <span>前端自動智慧壓縮，極速上傳不卡頓</span>
+      </div>
+    </div>
+
+    <!-- 步驟 2: 預覽、填寫資訊與上傳 -->
+    <div id="stepPreview" class="hidden glass-card rounded-3xl p-6 shadow-2xl space-y-4 transition-all duration-300">
+      
+      <div class="relative rounded-2xl overflow-hidden bg-black/5 aspect-[4/3] flex items-center justify-center border border-gray-200 shadow-inner">
+        <img id="previewImage" src="" alt="預覽圖" class="w-full h-full object-cover" />
+        <button onclick="cancelPreview()" class="absolute top-2 right-2 bg-black/60 hover:bg-black/80 text-white p-2 rounded-full backdrop-blur-sm transition shadow">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+        <span id="compressInfo" class="absolute bottom-2 left-2 bg-black/70 text-white text-[11px] px-2.5 py-1 rounded-md backdrop-blur-sm">
+          壓縮中...
+        </span>
+      </div>
+
+      <div class="space-y-3 pt-1">
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">你的暱稱 / 姓名（選填）</label>
+          <div class="relative">
+            <i data-lucide="user" class="w-4 h-4 absolute left-3 top-3.5 text-gray-400"></i>
+            <input type="text" id="authorInput" placeholder="例如：大熊、3號小美" maxlength="15" class="w-full pl-9 pr-3 py-2.5 text-sm bg-white/90 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">留言 / 祝福語（選填）</label>
+          <div class="relative">
+            <i data-lucide="message-circle" class="w-4 h-4 absolute left-3 top-3.5 text-gray-400"></i>
+            <input type="text" id="messageInput" placeholder="給現場留下想說的話..." maxlength="40" class="w-full pl-9 pr-3 py-2.5 text-sm bg-white/90 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+          </div>
+        </div>
+      </div>
+
+      <button id="uploadBtn" onclick="uploadPhoto()" class="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg transition transform active:scale-95 text-base">
+        <i data-lucide="send" class="w-5 h-5"></i>
+        <span>確認上傳至大螢幕</span>
+      </button>
+    </div>
+
+    <!-- 步驟 3: 上傳進度條 -->
+    <div id="stepUploading" class="hidden glass-card rounded-3xl p-8 shadow-2xl text-center space-y-4">
+      <div class="animate-spin inline-flex items-center justify-center p-3 bg-indigo-50 text-indigo-600 rounded-full">
+        <i data-lucide="loader-2" class="w-8 h-8"></i>
+      </div>
+      <h3 class="text-lg font-bold text-gray-800">正在傳送到大螢幕...</h3>
+      
+      <!-- 進度條 -->
+      <div class="w-full bg-gray-200 rounded-full h-3.5 overflow-hidden shadow-inner">
+        <div id="progressBar" class="bg-gradient-to-r from-indigo-500 to-pink-500 h-full rounded-full transition-all duration-200" style="width: 0%"></div>
+      </div>
+      <p id="progressText" class="text-xs font-mono text-gray-500 font-semibold">0%</p>
+    </div>
+
+    <!-- 步驟 4: 上傳成功畫面 -->
+    <div id="stepSuccess" class="hidden glass-card rounded-3xl p-8 shadow-2xl text-center space-y-5">
+      <div class="inline-flex items-center justify-center w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full mx-auto shadow-inner">
+        <i data-lucide="check-circle-2" class="w-10 h-10"></i>
+      </div>
+      <div>
+        <h3 class="text-2xl font-black text-gray-800">🎉 上傳成功！</h3>
+        <p class="text-xs text-gray-600 mt-1 font-medium">快看大螢幕，你的照片已經即時亮相囉！</p>
+      </div>
+
+      <button onclick="resetToHome()" class="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg transition transform active:scale-95">
+        <i data-lucide="plus-circle" class="w-5 h-5"></i>
+        <span>再拍一張</span>
+      </button>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="text-center text-[11px] text-white/80 py-2">
+    <div class="inline-flex items-center justify-center space-x-1 cursor-pointer bg-black/20 px-3 py-1.5 rounded-full backdrop-blur-sm" onclick="openConfigModal()">
+      <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-300"></i>
+      <span>Firebase 連線已配置 (點擊可更換金鑰)</span>
+    </div>
+  </footer>
+
+  <!-- ========================================== -->
+  <!-- 核心 JavaScript 邏輯 -->
+  <!-- ========================================== -->
+  <script>
+    // ==========================================
+    // 1. Firebase 設定 (可直接在此填入或由網頁輸入)
+    // ==========================================
+    let firebaseConfig = {
+      apiKey: "AIzaSyAwlHmSdP4FrGZUmZe7JnL28BcCq09n1P8",
+      authDomain: "test-49c68.firebaseapp.com",
+      projectId: "test-49c68",
+      storageBucket: "test-49c68.firebasestorage.app",
+      messagingSenderId: "32127977122",
+      appId: "1:32127977122:web:d0c5180e4d89ef680db9fb",
+      measurementId: "G-045MJCDSQN"
+    };
+
+    // 優先讀取 localStorage 設定
+    const savedConfig = localStorage.getItem("FIREBASE_CUSTOM_CONFIG");
+    if (savedConfig) {
+      try {
+        firebaseConfig = JSON.parse(savedConfig);
+      } catch (e) {
+        console.error("載入自訂設定失敗:", e);
+      }
+    }
+
+    let db = null;
+    let storage = null;
+
+    function initFirebase() {
+      if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
+        openConfigModal();
+        return false;
+      }
+      try {
+        if (!firebase.apps.length) {
+          firebase.initializeApp(firebaseConfig);
+        }
+        db = firebase.firestore();
+        storage = firebase.storage();
+        return true;
+      } catch (err) {
+        console.error("Firebase 初始化失敗:", err);
+        alert("Firebase 初始化失敗，請檢查設定內容是否正確！");
+        openConfigModal();
+        return false;
+      }
+    }
+
+    function openConfigModal() {
+      document.getElementById("configModal").classList.remove("hidden");
+      document.getElementById("configInput").value = JSON.stringify(firebaseConfig, null, 2);
+    }
+
+    function saveCustomConfig() {
+      const raw = document.getElementById("configInput").value.trim();
+      try {
+        const parsed = JSON.parse(raw);
+        if (!parsed.apiKey || !parsed.projectId) {
+          alert("設定格式不正確，至少需要 apiKey 與 projectId");
+          return;
+        }
+        localStorage.setItem("FIREBASE_CUSTOM_CONFIG", JSON.stringify(parsed));
+        location.reload();
+      } catch (err) {
+        alert("JSON 格式解析錯誤，請確認貼上的是正確的 JSON 物件！");
+      }
+    }
+
+    // ==========================================
+    // 2. 前端圖片選擇與 Canvas 智慧壓縮
+    // ==========================================
+    let currentBlob = null;
+
+    function handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      showStep("stepPreview");
+      document.getElementById("compressInfo").innerText = "處理並壓縮中...";
+
+      // 使用 Canvas 壓縮圖片 (最大邊長 1600px, 畫質 0.8 JPEG)
+      compressImage(file, 1600, 0.8, (blob, originalSize, compressedSize) => {
+        currentBlob = blob;
+        const previewUrl = URL.createObjectURL(blob);
+        document.getElementById("previewImage").src = previewUrl;
+        
+        const origKB = (originalSize / 1024).toFixed(0);
+        const compKB = (compressedSize / 1024).toFixed(0);
+        document.getElementById("compressInfo").innerText = `已優化: ${origKB}KB ➔ ${compKB}KB`;
+      });
+
+      // 重設 input 讓同檔名也能觸發 change
+      event.target.value = "";
+    }
+
+    function compressImage(file, maxDimension, quality, callback) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          let width = img.width;
+          let height = img.height;
+
+          // 計算縮放比例
+          if (width > height) {
+            if (width > maxDimension) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            }
+          } else {
+            if (height > maxDimension) {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              callback(blob, file.size, blob.size);
+            },
+            "image/jpeg",
+            quality
+          );
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function cancelPreview() {
+      currentBlob = null;
+      document.getElementById("previewImage").src = "";
+      showStep("stepSelect");
+    }
+
+    function resetToHome() {
+      cancelPreview();
+      document.getElementById("messageInput").value = "";
+    }
+
+    function showStep(stepId) {
+      ["stepSelect", "stepPreview", "stepUploading", "stepSuccess"].forEach(id => {
+        document.getElementById(id).classList.add("hidden");
+      });
+      document.getElementById(stepId).classList.remove("hidden");
+      lucide.createIcons();
+    }
+
+    // ==========================================
+    // 3. 上傳照片至 Firebase Storage + Firestore
+    // ==========================================
+    async function uploadPhoto() {
+      if (!currentBlob) {
+        alert("請先選擇或拍攝照片！");
+        return;
+      }
+      if (!initFirebase()) return;
+
+      const author = document.getElementById("authorInput").value.trim() || "現場同學";
+      const message = document.getElementById("messageInput").value.trim() || "";
+
+      showStep("stepUploading");
+      const progressBar = document.getElementById("progressBar");
+      const progressText = document.getElementById("progressText");
+      progressBar.style.width = "0%";
+      progressText.innerText = "準備上傳中...";
+
+      try {
+        const timestamp = Date.now();
+        const fileName = `photos/${timestamp}_${Math.random().toString(36).substring(2, 8)}.jpg`;
+        const storageRef = storage.ref(fileName);
+        
+        // 建立可監聽進度的上傳任務
+        const uploadTask = storageRef.put(currentBlob, {
+          contentType: "image/jpeg"
+        });
+
+        uploadTask.on(
+          "state_changed",
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            progressBar.style.width = `${progress.toFixed(0)}%`;
+            progressText.innerText = `${progress.toFixed(0)}% (${(snapshot.bytesTransferred / 1024).toFixed(0)} KB / ${(snapshot.totalBytes / 1024).toFixed(0)} KB)`;
+          },
+          (error) => {
+            console.error("Storage 上傳失敗:", error);
+            alert("上傳失敗：" + error.message);
+            showStep("stepPreview");
+          },
+          async () => {
+            // 上傳完成，取得下載連結
+            const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+            
+            // 寫入 Firestore 照片集合
+            await db.collection("photos").add({
+              url: downloadURL,
+              author: author,
+              message: message,
+              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+              timestamp: timestamp
+            });
+
+            // 觸發慶祝彩花特效
+            showStep("stepSuccess");
+            if (typeof confetti === "function") {
+              confetti({
+                particleCount: 80,
+                spread: 70,
+                origin: { y: 0.6 }
+              });
+            }
+          }
+        );
+      } catch (err) {
+        console.error("上傳過程發生錯誤:", err);
+        alert("發生錯誤：" + err.message);
+        showStep("stepPreview");
+      }
+    }
+
+    // 初始化 Lucide 圖示
+    document.addEventListener("DOMContentLoaded", () => {
+      lucide.createIcons();
+      initFirebase();
+    });
+  </script>
+</body>
+</html>

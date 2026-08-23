@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>📺 大螢幕即時相片牆 - LIVE 展示端</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- QRCode.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- Canvas Confetti CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+  <!-- Firebase SDKs (Compat version for single-file portability) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&family=Noto+Sans+TC:wght@400;700;900&display=swap');
+
+    body {
+      font-family: 'Plus Jakarta Sans', 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #0b0f19;
+      color: #f3f4f6;
+      overflow: hidden;
+    }
+
+    .glass-panel {
+      background: rgba(18, 24, 38, 0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .glass-card {
+      background: rgba(30, 41, 59, 0.65);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* 自訂滾動條 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.4);
+    }
+
+    /* 新照片彈跳動效 */
+    @keyframes newPhotoGlow {
+      0% { transform: scale(0.92); opacity: 0; box-shadow: 0 0 0 rgba(147, 51, 234, 0); }
+      50% { transform: scale(1.02); opacity: 1; box-shadow: 0 0 50px rgba(168, 85, 247, 0.8); }
+      100% { transform: scale(1); opacity: 1; box-shadow: 0 0 25px rgba(168, 85, 247, 0.3); }
+    }
+    .animate-new-photo {
+      animation: newPhotoGlow 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    /* 漸變流光背景動畫 */
+    .ambient-glow {
+      position: absolute;
+      width: 600px;
+      height: 600px;
+      border-radius: 50%;
+      filter: blur(140px);
+      opacity: 0.18;
+      pointer-events: none;
+      z-index: 0;
+      animation: float 20s infinite alternate ease-in-out;
+    }
+    @keyframes float {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(120px, 80px) scale(1.2); }
+    }
+  </style>
+</head>
+<body class="relative h-screen w-screen flex flex-col select-none">
+
+  <!-- 背景氛圍光效 -->
+  <div class="ambient-glow bg-indigo-600 -top-32 -left-32"></div>
+  <div class="ambient-glow bg-purple-600 -bottom-32 left-1/3" style="animation-delay: -7s;"></div>
+  <div class="ambient-glow bg-pink-600 top-1/4 -right-32" style="animation-delay: -12s;"></div>
+
+  <!-- ========================================== -->
+  <!-- Firebase 設定彈窗 -->
+  <!-- ========================================== -->
+  <div id="configModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+    <div class="bg-gray-900 border border-gray-700 w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-4 text-white">
+      <div class="flex items-center space-x-2 text-indigo-400">
+        <i data-lucide="settings" class="w-6 h-6"></i>
+        <h3 class="text-xl font-bold">大螢幕端 Firebase 設定</h3>
+      </div>
+      <p class="text-xs text-gray-300">
+        請貼上 Firebase 控制台的 <code class="bg-gray-800 px-1 py-0.5 rounded text-indigo-400 font-mono">firebaseConfig</code> 物件：
+      </p>
+      <textarea id="configInput" rows="7" placeholder='{
+  "apiKey": "AIzaSy...",
+  "authDomain": "your-app.firebaseapp.com",
+  "projectId": "your-app",
+  "storageBucket": "your-app.firebasestorage.app",
+  "messagingSenderId": "...",
+  "appId": "..."
+}' class="w-full text-xs font-mono p-3 bg-gray-950 border border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-gray-100"></textarea>
+      
+      <div>
+        <label class="block text-xs font-bold text-gray-400 mb-1">手機上傳端網址 (若留空則自動偵測同目錄 upload.html)：</label>
+        <input type="text" id="uploadUrlInput" placeholder="https://your-domain.com/upload.html" class="w-full text-xs p-2.5 bg-gray-950 border border-gray-700 rounded-xl text-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none font-mono" />
+      </div>
+
+      <div class="flex space-x-3 pt-2">
+        <button onclick="saveCustomConfig()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl transition text-sm shadow-lg">
+          儲存並啟動相片牆
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 頂部導覽與狀態列 -->
+  <header class="relative z-10 flex items-center justify-between px-8 py-4 border-b border-white/10 glass-panel">
+    <div class="flex items-center space-x-4">
+      <div class="flex items-center space-x-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 px-3.5 py-1.5 rounded-xl font-black text-sm shadow-md">
+        <i data-lucide="sparkles" class="w-4 h-4 animate-spin" style="animation-duration: 6s;"></i>
+        <span>LIVE 相片即時互動牆</span>
+      </div>
+      <div class="flex items-center space-x-2 text-xs text-gray-400 font-mono">
+        <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+        <span id="connectionStatus" class="text-emerald-400 font-semibold">雲端即時連線中</span>
+        <span>•</span>
+        <span id="photoCount">共 0 張回憶</span>
+      </div>
+    </div>
+
+    <!-- 控制功能按鈕群 -->
+    <div class="flex items-center space-x-3">
+      <!-- 輪播開關 -->
+      <button id="autoplayBtn" onclick="toggleAutoplay()" title="切換自動輪播" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold transition border border-white/10">
+        <i data-lucide="play" id="autoplayIcon" class="w-4 h-4 text-emerald-400"></i>
+        <span id="autoplayText">輪播中</span>
+      </button>
+
+      <!-- 音效開關 -->
+      <button id="soundBtn" onclick="toggleSound()" title="新照片音效提示" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold transition border border-white/10">
+        <i data-lucide="volume-2" id="soundIcon" class="w-4 h-4 text-indigo-300"></i>
+      </button>
+
+      <!-- 全螢幕按鈕 -->
+      <button onclick="toggleFullscreen()" title="全螢幕展示 (快捷鍵 F)" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold transition border border-white/10">
+        <i data-lucide="maximize" class="w-4 h-4 text-white"></i>
+        <span>全螢幕</span>
+      </button>
+
+      <!-- 設定按鈕 -->
+      <button onclick="openConfigModal()" title="設定" class="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition border border-white/10 text-gray-300">
+        <i data-lucide="settings" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- 主舞台與右側縮圖欄容器 -->
+  <main class="relative z-10 flex-1 flex overflow-hidden p-6 gap-6">
+
+    <!-- 左/中側：大圖焦點主舞台 (Main Stage) -->
+    <section class="flex-1 flex flex-col justify-center items-center relative rounded-3xl glass-panel p-4 overflow-hidden border border-white/10">
+      
+      <!-- 空白狀態 (無照片時) -->
+      <div id="emptyState" class="flex flex-col items-center justify-center text-center space-y-4 max-w-md">
+        <div class="w-24 h-24 rounded-full bg-gradient-to-tr from-indigo-500/20 to-purple-500/20 flex items-center justify-center border border-white/10 shadow-2xl">
+          <i data-lucide="camera" class="w-12 h-12 text-indigo-400 animate-bounce"></i>
+        </div>
+        <h2 class="text-2xl font-black tracking-wide text-white">即時相片牆已就緒</h2>
+        <p class="text-sm text-gray-400 leading-relaxed">
+          請拿起手機掃描右下角專屬 QR Code<br/>拍下現場第一張精彩照片吧！
+        </p>
+      </div>
+
+      <!-- 主舞台大圖展示容器 -->
+      <div id="stageContainer" class="hidden relative w-full h-full flex flex-col justify-center items-center">
+        
+        <!-- 大圖 (含動態過渡與光影) -->
+        <div class="relative max-h-[82vh] max-w-full flex items-center justify-center rounded-2xl overflow-hidden shadow-2xl border border-white/20 group">
+          <img id="mainStageImg" src="" alt="焦點照片" class="max-h-[80vh] max-w-full object-contain rounded-2xl transition-all duration-700 ease-out" />
+          
+          <!-- 照片作者與留言浮層 -->
+          <div id="mainCaptionBox" class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-6 flex flex-col justify-end text-white transition-opacity duration-300">
+            <div class="flex items-center space-x-3">
+              <span id="mainAuthorTag" class="px-3 py-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full text-xs font-bold tracking-wide shadow-md">
+                上傳者
+              </span>
+              <span id="mainTimeTag" class="text-xs text-gray-300 font-mono">
+                剛剛
+              </span>
+            </div>
+            <p id="mainMessageText" class="text-lg font-bold text-white mt-2 drop-shadow-md tracking-wide">
+              留言內容
+            </p>
+          </div>
+        </div>
+
+        <!-- 即時新照片到來提示條 (橫幅) -->
+        <div id="newAlertBanner" class="hidden absolute top-4 bg-gradient-to-r from-pink-500 via-purple-600 to-indigo-600 text-white px-6 py-2 rounded-full font-bold text-sm shadow-2xl flex items-center space-x-2 animate-bounce border border-white/30">
+          <i data-lucide="bell-ring" class="w-4 h-4"></i>
+          <span>🎉 捕捉到最新照片！</span>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- 右側：縮圖時光瀑布流 (Side Stream Rail) -->
+    <aside class="w-80 lg:w-96 flex flex-col glass-panel rounded-3xl p-4 border border-white/10 overflow-hidden">
+      <div class="flex items-center justify-between pb-3 border-b border-white/10">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="film" class="w-4 h-4 text-purple-400"></i>
+          <h3 class="font-bold text-sm tracking-wide text-gray-200">即時相片串流</h3>
+        </div>
+        <span class="text-[11px] text-gray-400 font-mono">點擊可立即放大</span>
+      </div>
+
+      <!-- 縮圖列表容器 (自動滾動/最新在上) -->
+      <div id="thumbnailList" class="flex-1 overflow-y-auto space-y-3 pt-3 pr-1">
+        <!-- JS 動態生成照片卡片 -->
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- ========================================== -->
+  <!-- 右下角浮動專屬 QR Code 卡片 -->
+  <!-- ========================================== -->
+  <div class="fixed bottom-6 right-8 z-30 flex flex-col items-center">
+    <div class="glass-card rounded-2xl p-3.5 shadow-2xl border border-indigo-500/30 flex flex-col items-center space-y-2 hover:scale-105 transition-transform duration-300 cursor-pointer" onclick="toggleQrExpand()" title="點擊放大/縮小 QR Code">
+      <div class="bg-white p-2 rounded-xl shadow-inner" id="qrcodeContainer">
+        <!-- QRCode 由 QRCode.js 自動注入 -->
+      </div>
+      <div class="text-center">
+        <div class="flex items-center justify-center space-x-1 text-xs font-black text-indigo-300">
+          <i data-lucide="camera" class="w-3.5 h-3.5"></i>
+          <span>掃描手機立即拍</span>
+        </div>
+        <p class="text-[10px] text-gray-400 font-mono mt-0.5">即時傳送到大螢幕</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR Code 點擊全螢幕放大檢視模態框 -->
+  <div id="qrModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4" onclick="toggleQrExpand()">
+    <div class="bg-gray-900 border border-white/20 rounded-3xl p-8 flex flex-col items-center space-y-5 shadow-2xl" onclick="event.stopPropagation()">
+      <h3 class="text-2xl font-black text-white">📱 手機掃碼拍照上傳</h3>
+      <div class="bg-white p-4 rounded-2xl" id="qrcodeLargeContainer"></div>
+      <p id="qrUrlLabel" class="text-xs font-mono text-gray-400 break-all max-w-sm text-center"></p>
+      <button onclick="toggleQrExpand()" class="px-6 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-bold text-white transition">
+        關閉
+      </button>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 核心 JavaScript 邏輯 -->
+  <!-- ========================================== -->
+  <script>
+    // ==========================================
+    // 1. Firebase 與連線設定
+    // ==========================================
+    let firebaseConfig = {
+      apiKey: "AIzaSyAwlHmSdP4FrGZUmZe7JnL28BcCq09n1P8",
+      authDomain: "test-49c68.firebaseapp.com",
+      projectId: "test-49c68",
+      storageBucket: "test-49c68.firebasestorage.app",
+      messagingSenderId: "32127977122",
+      appId: "1:32127977122:web:d0c5180e4d89ef680db9fb",
+      measurementId: "G-045MJCDSQN"
+    };
+
+    let customUploadUrl = "";
+
+    // 優先讀取 localStorage 設定
+    const savedConfig = localStorage.getItem("FIREBASE_CUSTOM_CONFIG");
+    if (savedConfig) {
+      try {
+        firebaseConfig = JSON.parse(savedConfig);
+      } catch (e) {
+        console.error("載入自訂設定失敗:", e);
+      }
+    }
+    const savedUploadUrl = localStorage.getItem("CUSTOM_UPLOAD_URL");
+    if (savedUploadUrl) {
+      customUploadUrl = savedUploadUrl;
+    }
+
+    let db = null;
+    let photos = [];
+    let currentIndex = 0;
+    let autoplayInterval = null;
+    let isAutoplay = true;
+    let isSoundEnabled = true;
+    let isFirstLoad = true;
+
+    function initFirebase() {
+      if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
+        openConfigModal();
+        return false;
+      }
+      try {
+        if (!firebase.apps.length) {
+          firebase.initializeApp(firebaseConfig);
+        }
+        db = firebase.firestore();
+        listenToPhotos();
+        return true;
+      } catch (err) {
+        console.error("Firebase 初始化失敗:", err);
+        openConfigModal();
+        return false;
+      }
+    }
+
+    function openConfigModal() {
+      document.getElementById("configModal").classList.remove("hidden");
+      document.getElementById("configInput").value = JSON.stringify(firebaseConfig, null, 2);
+      document.getElementById("uploadUrlInput").value = customUploadUrl;
+    }
+
+    function saveCustomConfig() {
+      const raw = document.getElementById("configInput").value.trim();
+      const urlRaw = document.getElementById("uploadUrlInput").value.trim();
+      try {
+        const parsed = JSON.parse(raw);
+        if (!parsed.apiKey || !parsed.projectId) {
+          alert("設定格式不正確，至少需要 apiKey 與 projectId");
+          return;
+        }
+        localStorage.setItem("FIREBASE_CUSTOM_CONFIG", JSON.stringify(parsed));
+        if (urlRaw) {
+          localStorage.setItem("CUSTOM_UPLOAD_URL", urlRaw);
+        } else {
+          localStorage.removeItem("CUSTOM_UPLOAD_URL");
+        }
+        location.reload();
+      } catch (err) {
+        alert("JSON 格式解析錯誤，請確認貼上的是正確的 JSON 物件！");
+      }
+    }
+
+    // ==========================================
+    // 2. 即時監聽 Firestore 照片集合
+    // ==========================================
+    function listenToPhotos() {
+      // 依建立時間倒序排序監聽
+      db.collection("photos")
+        .orderBy("timestamp", "desc")
+        .limit(100)
+        .onSnapshot((snapshot) => {
+          const newDocChanges = snapshot.docChanges();
+
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === "added") {
+              const photoData = { id: change.doc.id, ...change.doc.data() };
+              
+              // 避免重複添加
+              if (!photos.some(p => p.id === photoData.id)) {
+                photos.unshift(photoData);
+
+                // 如果不是第一次初始化加載，代表有現場即時新照片上傳！
+                if (!isFirstLoad) {
+                  onNewPhotoReceived(photoData);
+                }
+              }
+            }
+          });
+
+          // 重新排序保證最新在最前
+          photos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+          updatePhotoCount();
+          renderThumbnailList();
+
+          if (isFirstLoad) {
+            if (photos.length > 0) {
+              setMainStage(0);
+            }
+            isFirstLoad = false;
+          }
+        }, (error) => {
+          console.error("Firestore 監聽錯誤:", error);
+          document.getElementById("connectionStatus").innerText = "連線異常";
+          document.getElementById("connectionStatus").className = "text-rose-400 font-semibold";
+        });
+    }
+
+    // ==========================================
+    // 3. 即時新照片動態特效與提示
+    // ==========================================
+    function onNewPhotoReceived(photo) {
+      // 1. 播放音效
+      playCelebrationSound();
+
+      // 2. 噴發彩花
+      if (typeof confetti === "function") {
+        confetti({
+          particleCount: 100,
+          spread: 80,
+          origin: { y: 0.5 }
+        });
+      }
+
+      // 3. 立即切換到最新照片
+      currentIndex = 0;
+      setMainStage(0, true);
+
+      // 4. 顯示新照片橫幅
+      const banner = document.getElementById("newAlertBanner");
+      banner.classList.remove("hidden");
+      setTimeout(() => {
+        banner.classList.add("hidden");
+      }, 5000);
+    }
+
+    // Web Audio API 合成愉悅的提示和弦音效（無需外部音檔）
+    function playCelebrationSound() {
+      if (!isSoundEnabled) return;
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6 和弦
+        notes.forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "sine";
+          osc.frequency.value = freq;
+          
+          const startTime = ctx.currentTime + (i * 0.09);
+          gain.gain.setValueAtTime(0.01, startTime);
+          gain.gain.exponentialRampToValueAtTime(0.18, startTime + 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.6);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+
+          osc.start(startTime);
+          osc.stop(startTime + 0.65);
+        });
+      } catch (e) {
+        console.warn("無法播放音效:", e);
+      }
+    }
+
+    // ==========================================
+    // 4. 主舞台與縮圖列表渲染
+    // ==========================================
+    function setMainStage(index, isNewGlow = false) {
+      if (!photos[index]) return;
+      currentIndex = index;
+      const photo = photos[index];
+
+      document.getElementById("emptyState").classList.add("hidden");
+      document.getElementById("stageContainer").classList.remove("hidden");
+
+      const img = document.getElementById("mainStageImg");
+      
+      // 動畫過渡
+      img.style.opacity = "0.2";
+      setTimeout(() => {
+        img.src = photo.url;
+        img.onload = () => {
+          img.style.opacity = "1";
+          if (isNewGlow) {
+            img.classList.remove("animate-new-photo");
+            void img.offsetWidth; // 強制重繪
+            img.classList.add("animate-new-photo");
+          }
+        };
+      }, 200);
+
+      document.getElementById("mainAuthorTag").innerText = photo.author || "現場同學";
+      document.getElementById("mainMessageText").innerText = photo.message || "📸 分享精彩瞬間！";
+      
+      const timeStr = photo.timestamp ? new Date(photo.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "剛剛";
+      document.getElementById("mainTimeTag").innerText = timeStr;
+
+      highlightActiveThumbnail(index);
+    }
+
+    function renderThumbnailList() {
+      const container = document.getElementById("thumbnailList");
+      container.innerHTML = "";
+
+      photos.forEach((photo, idx) => {
+        const card = document.createElement("div");
+        card.id = `thumb-${idx}`;
+        card.onclick = () => {
+          setMainStage(idx);
+          resetAutoplayTimer();
+        };
+
+        const isActive = idx === currentIndex;
+        card.className = `flex items-center space-x-3 p-2.5 rounded-2xl cursor-pointer transition-all duration-200 border ${
+          isActive ? "bg-indigo-600/30 border-indigo-400 shadow-lg scale-[1.02]" : "bg-white/5 hover:bg-white/10 border-white/5"
+        }`;
+
+        const timeStr = photo.timestamp ? new Date(photo.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "";
+
+        card.innerHTML = `
+          <img src="${photo.url}" alt="縮圖" class="w-14 h-14 object-cover rounded-xl border border-white/10 shadow-sm flex-shrink-0" />
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-bold text-white truncate">${photo.author || "現場同學"}</h4>
+              <span class="text-[10px] text-gray-400 font-mono">${timeStr}</span>
+            </div>
+            <p class="text-[11px] text-gray-300 truncate mt-0.5">${photo.message || "📷 照片已同步"}</p>
+          </div>
+        `;
+
+        container.appendChild(card);
+      });
+    }
+
+    function highlightActiveThumbnail(index) {
+      photos.forEach((_, i) => {
+        const el = document.getElementById(`thumb-${i}`);
+        if (el) {
+          if (i === index) {
+            el.className = "flex items-center space-x-3 p-2.5 rounded-2xl cursor-pointer transition-all duration-200 border bg-indigo-600/30 border-indigo-400 shadow-lg scale-[1.02]";
+            el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          } else {
+            el.className = "flex items-center space-x-3 p-2.5 rounded-2xl cursor-pointer transition-all duration-200 border bg-white/5 hover:bg-white/10 border-white/5";
+          }
+        }
+      });
+    }
+
+    function updatePhotoCount() {
+      document.getElementById("photoCount").innerText = `共 ${photos.length} 張回憶`;
+    }
+
+    // ==========================================
+    // 5. 自動輪播機制 (Slideshow)
+    // ==========================================
+    function startAutoplay() {
+      if (autoplayInterval) clearInterval(autoplayInterval);
+      autoplayInterval = setInterval(() => {
+        if (!isAutoplay || photos.length <= 1) return;
+        currentIndex = (currentIndex + 1) % photos.length;
+        setMainStage(currentIndex);
+      }, 6000); // 每 6 秒切換一張
+    }
+
+    function resetAutoplayTimer() {
+      if (isAutoplay) {
+        startAutoplay();
+      }
+    }
+
+    function toggleAutoplay() {
+      isAutoplay = !isAutoplay;
+      document.getElementById("autoplayText").innerText = isAutoplay ? "輪播中" : "已暫停";
+      document.getElementById("autoplayIcon").className = isAutoplay ? "w-4 h-4 text-emerald-400" : "w-4 h-4 text-gray-400";
+      if (isAutoplay) startAutoplay();
+    }
+
+    function toggleSound() {
+      isSoundEnabled = !isSoundEnabled;
+      const icon = document.getElementById("soundIcon");
+      if (isSoundEnabled) {
+        icon.setAttribute("data-lucide", "volume-2");
+        icon.className = "w-4 h-4 text-indigo-300";
+      } else {
+        icon.setAttribute("data-lucide", "volume-x");
+        icon.className = "w-4 h-4 text-gray-500";
+      }
+      lucide.createIcons();
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => console.log(err));
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
+    }
+
+    // 鍵盤快捷鍵：F 全螢幕、空白鍵 輪播切換
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "f" || e.key === "F") {
+        toggleFullscreen();
+      } else if (e.key === " ") {
+        toggleAutoplay();
+      }
+    });
+
+    // ==========================================
+    // 6. QR Code 動態生成
+    // ==========================================
+    function generateQRCodes() {
+      let uploadUrl = customUploadUrl;
+      if (!uploadUrl) {
+        // 自動替換當前 URL 的 screen.html 為 upload.html
+        const loc = window.location.href;
+        if (loc.includes("screen.html")) {
+          uploadUrl = loc.replace("screen.html", "upload.html");
+        } else {
+          uploadUrl = window.location.origin + window.location.pathname.replace(/\/[^\/]*$/, "/upload.html");
+        }
+      }
+
+      document.getElementById("qrcodeContainer").innerHTML = "";
+      new QRCode(document.getElementById("qrcodeContainer"), {
+        text: uploadUrl,
+        width: 100,
+        height: 100,
+        colorDark: "#0f172a",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.M
+      });
+
+      document.getElementById("qrcodeLargeContainer").innerHTML = "";
+      new QRCode(document.getElementById("qrcodeLargeContainer"), {
+        text: uploadUrl,
+        width: 240,
+        height: 240,
+        colorDark: "#0f172a",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.H
+      });
+
+      document.getElementById("qrUrlLabel").innerText = uploadUrl;
+    }
+
+    function toggleQrExpand() {
+      const modal = document.getElementById("qrModal");
+      modal.classList.toggle("hidden");
+    }
+
+    // ==========================================
+    // 初始化啟動
+    // ==========================================
+    document.addEventListener("DOMContentLoaded", () => {
+      lucide.createIcons();
+      generateQRCodes();
+      initFirebase();
+      startAutoplay();
+
+      // iOS / Safari 音效自動解鎖（首次點擊畫面時解除靜音限制）
+      const unlockAudio = () => {
+        try {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) {
+            const tempCtx = new AudioContext();
+            tempCtx.resume().then(() => tempCtx.close());
+          }
+        } catch (e) {}
+        document.removeEventListener("click", unlockAudio);
+        document.removeEventListener("touchstart", unlockAudio);
+      };
+      document.addEventListener("click", unlockAudio, { once: true });
+      document.addEventListener("touchstart", unlockAudio, { once: true });
+    });
+  </script>
+</body>
+</html>
