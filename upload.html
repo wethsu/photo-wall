@@ -364,7 +364,14 @@
       const progressBar = document.getElementById("progressBar");
       const progressText = document.getElementById("progressText");
       progressBar.style.width = "0%";
-      progressText.innerText = "準備上傳中...";
+      progressText.innerText = "準備上傳至雲端...";
+
+      let isTimeout = false;
+      const uploadTimeout = setTimeout(() => {
+        isTimeout = true;
+        alert("上傳逾時！請確認：\n1. 是否在 Firebase Console 開啟了 Storage 與 Firestore 資料庫？\n2. 規則 (Rules) 是否皆設為 allow read, write: if true;\n3. 網路連線是否正常。");
+        showStep("stepPreview");
+      }, 25000);
 
       try {
         const timestamp = Date.now();
@@ -381,38 +388,61 @@
           (snapshot) => {
             const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
             progressBar.style.width = `${progress.toFixed(0)}%`;
-            progressText.innerText = `${progress.toFixed(0)}% (${(snapshot.bytesTransferred / 1024).toFixed(0)} KB / ${(snapshot.totalBytes / 1024).toFixed(0)} KB)`;
+            progressText.innerText = `檔案上傳中: ${progress.toFixed(0)}% (${(snapshot.bytesTransferred / 1024).toFixed(0)} KB / ${(snapshot.totalBytes / 1024).toFixed(0)} KB)`;
           },
           (error) => {
+            clearTimeout(uploadTimeout);
+            if (isTimeout) return;
             console.error("Storage 上傳失敗:", error);
-            alert("上傳失敗：" + error.message);
+            
+            let errMsg = "上傳失敗：" + error.message;
+            if (error.code === 'storage/unauthorized') {
+              errMsg = "【權限不足】請前往 Firebase Console -> Storage -> Rules，將規則改為 allow read, write: if true; 並點擊發布。";
+            } else if (error.code === 'storage/bucket-not-found') {
+              errMsg = "【尚未啟用 Storage】請前往 Firebase Console 開啟 Storage 服務！";
+            }
+            alert(errMsg);
             showStep("stepPreview");
           },
           async () => {
-            // 上傳完成，取得下載連結
-            const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
-            
-            // 寫入 Firestore 照片集合
-            await db.collection("photos").add({
-              url: downloadURL,
-              author: author,
-              message: message,
-              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-              timestamp: timestamp
-            });
-
-            // 觸發慶祝彩花特效
-            showStep("stepSuccess");
-            if (typeof confetti === "function") {
-              confetti({
-                particleCount: 80,
-                spread: 70,
-                origin: { y: 0.6 }
+            try {
+              progressText.innerText = "正在同步至大螢幕...";
+              // 上傳完成，取得下載連結
+              const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+              
+              // 寫入 Firestore 照片集合
+              await db.collection("photos").add({
+                url: downloadURL,
+                author: author,
+                message: message,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                timestamp: timestamp
               });
+
+              clearTimeout(uploadTimeout);
+              // 觸發慶祝彩花特效
+              showStep("stepSuccess");
+              if (typeof confetti === "function") {
+                confetti({
+                  particleCount: 80,
+                  spread: 70,
+                  origin: { y: 0.6 }
+                });
+              }
+            } catch (dbErr) {
+              clearTimeout(uploadTimeout);
+              console.error("寫入 Firestore 失敗:", dbErr);
+              let errMsg = "資料庫寫入失敗：" + dbErr.message;
+              if (dbErr.code === 'permission-denied') {
+                errMsg = "【Firestore 權限不足】請前往 Firebase Console -> Firestore Database -> Rules，將規則改為 allow read, write: if true; 並發布。";
+              }
+              alert(errMsg);
+              showStep("stepPreview");
             }
           }
         );
       } catch (err) {
+        clearTimeout(uploadTimeout);
         console.error("上傳過程發生錯誤:", err);
         alert("發生錯誤：" + err.message);
         showStep("stepPreview");
