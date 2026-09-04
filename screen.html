@@ -396,11 +396,11 @@
         <!-- 主舞台展示大圖 -->
         <div id="stageContainer" class="hidden relative w-full h-full flex flex-col justify-center items-center overflow-hidden rounded-2xl">
           <!-- 模糊背景擴散 -->
-          <img id="stageBgBlur" src="" alt="" class="absolute inset-0 w-full h-full object-cover blur-3xl opacity-35 scale-110 pointer-events-none transition-all duration-700"/>
+          <img id="stageBgBlur" crossorigin="anonymous" src="" alt="" class="absolute inset-0 w-full h-full object-cover blur-3xl opacity-35 scale-110 pointer-events-none transition-all duration-700"/>
           
           <!-- 大圖本體 -->
           <div class="relative z-10 max-h-[82vh] max-w-full flex items-center justify-center rounded-2xl overflow-hidden shadow-2xl border border-white/20 group/photo">
-            <img id="mainStageImg" src="" alt="焦點照片" class="max-h-[80vh] max-w-full object-contain rounded-2xl transition-all duration-500 ease-out shadow-2xl"/>
+            <img id="mainStageImg" crossorigin="anonymous" src="" alt="焦點照片" class="max-h-[80vh] max-w-full object-contain rounded-2xl transition-all duration-500 ease-out shadow-2xl"/>
             
             <!-- 浮層：作者、留言與操作按鈕 -->
             <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent p-6 flex items-end justify-between text-white">
@@ -870,6 +870,8 @@
       const bg = document.getElementById("stageBgBlur");
       img.style.opacity = "0.2";
       setTimeout(() => {
+        img.crossOrigin = "anonymous";
+        bg.crossOrigin = "anonymous";
         img.src = p.url; bg.src = p.url;
         img.onload = () => {
           img.style.opacity = "1";
@@ -1560,30 +1562,40 @@
 
           try {
             ctx.drawImage(img, sx, sy, sw, sh, finalDx, finalDy, finalDw, finalDh);
-            resolve();
-          } catch(e) {
-            const tempImg = new Image();
-            tempImg.crossOrigin = "anonymous";
-            tempImg.onload = () => {
-              try {
-                ctx.drawImage(tempImg, sx, sy, sw, sh, finalDx, finalDy, finalDw, finalDh);
-              } catch(err) {}
-              resolve();
-            };
-            tempImg.onerror = () => resolve();
-            tempImg.src = img.src;
+          } catch(err) {
+            console.warn("ctx.drawImage failed:", err);
           }
+          resolve();
         };
 
-        if (imgEl.complete && imgEl.naturalWidth > 0) {
-          handleDraw(imgEl);
-        } else {
-          const tempImg = new Image();
-          tempImg.crossOrigin = "anonymous";
-          tempImg.onload = () => handleDraw(tempImg);
-          tempImg.onerror = () => resolve();
-          tempImg.src = imgEl.src;
+        const src = imgEl ? (imgEl.src || imgEl) : "";
+        if (!src) { resolve(); return; }
+
+        if (src.startsWith('data:')) {
+          if (imgEl.complete && imgEl.naturalWidth > 0) {
+            handleDraw(imgEl);
+          } else {
+            const tempImg = new Image();
+            tempImg.onload = () => handleDraw(tempImg);
+            tempImg.onerror = () => resolve();
+            tempImg.src = src;
+          }
+          return;
         }
+
+        // 避免快取未帶 CORS 標頭，加上 _cors 參數
+        const corsImg = new Image();
+        corsImg.crossOrigin = "anonymous";
+        corsImg.onload = () => handleDraw(corsImg);
+        corsImg.onerror = () => {
+          if (imgEl.complete && (imgEl.naturalWidth > 0 || imgEl.width > 0)) {
+            handleDraw(imgEl);
+          } else {
+            resolve();
+          }
+        };
+        const sep = src.includes('?') ? '&' : '?';
+        corsImg.src = src.includes('_cors=') ? src : `${src}${sep}_cors=${Date.now()}`;
       });
     }
 
@@ -1602,16 +1614,21 @@
         if (viewMode === "split") {
           targetEl = document.getElementById("splitGridWrapper") || document.getElementById("splitGrid");
         } else if (viewMode === "stage") {
-          targetEl = document.getElementById("stageContainer") || document.getElementById("stageView");
+          const sc = document.getElementById("stageContainer");
+          if (sc && !sc.classList.contains("hidden") && sc.offsetWidth > 0) {
+            targetEl = sc;
+          } else {
+            targetEl = document.getElementById("stageView") || document.body;
+          }
         } else if (viewMode === "wall") {
-          targetEl = document.getElementById("wallView");
+          targetEl = document.getElementById("wallView") || document.body;
         } else {
           targetEl = document.body;
         }
 
         const rect = targetEl.getBoundingClientRect();
-        const width = Math.round(rect.width * dpr);
-        const height = Math.round(rect.height * dpr);
+        const width = Math.max(300, Math.round((rect.width || window.innerWidth) * dpr));
+        const height = Math.max(300, Math.round((rect.height || window.innerHeight) * dpr));
 
         const canvas = document.createElement("canvas");
         canvas.width = width;
@@ -1687,12 +1704,12 @@
           }
         } else if (viewMode === "stage") {
           const img = document.getElementById("mainStageImg");
-          if (img && img.src) {
+          if (img && img.src && (img.naturalWidth > 0 || img.width > 0)) {
             const iRect = img.getBoundingClientRect();
-            const ix = Math.round((iRect.left - rect.left) * dpr);
-            const iy = Math.round((iRect.top - rect.top) * dpr);
-            const iw = Math.round(iRect.width * dpr);
-            const ih = Math.round(iRect.height * dpr);
+            const ix = Math.max(0, Math.round((iRect.left - rect.left) * dpr));
+            const iy = Math.max(0, Math.round((iRect.top - rect.top) * dpr));
+            const iw = Math.min(width, Math.round(iRect.width * dpr));
+            const ih = Math.min(height, Math.round(iRect.height * dpr));
 
             ctx.save();
             const radius = Math.round(16 * dpr);
@@ -1702,42 +1719,87 @@
             ctx.clip();
             await drawImageCover(ctx, img, ix, iy, iw, ih, 'contain');
             ctx.restore();
+
+            // 舞台底部作者與留言
+            const author = (document.getElementById("mainAuthorTag")?.innerText || "").trim();
+            const msg = (document.getElementById("mainMessageText")?.innerText || "").trim();
+            if (author || msg) {
+              const gradH = Math.round(75 * dpr);
+              const grad = ctx.createLinearGradient(ix, iy + ih - gradH, ix, iy + ih);
+              grad.addColorStop(0, "rgba(0,0,0,0)");
+              grad.addColorStop(1, "rgba(0,0,0,0.9)");
+              ctx.fillStyle = grad;
+              ctx.fillRect(ix, iy + ih - gradH, iw, gradH);
+
+              if (author) {
+                ctx.fillStyle = "#a855f7";
+                ctx.font = `bold ${Math.round(13 * dpr)}px 'Noto Sans TC', -apple-system, sans-serif`;
+                ctx.fillText(author, ix + Math.round(16 * dpr), iy + ih - Math.round(35 * dpr));
+              }
+              if (msg) {
+                ctx.fillStyle = "#ffffff";
+                ctx.font = `bold ${Math.round(15 * dpr)}px 'Noto Sans TC', -apple-system, sans-serif`;
+                ctx.fillText(msg, ix + Math.round(16 * dpr), iy + ih - Math.round(14 * dpr));
+              }
+            }
           }
         } else {
           if (typeof html2canvas !== 'undefined') {
-            const htmlCanvas = await html2canvas(targetEl, { useCORS: true, allowTaint: true, scale: dpr, backgroundColor: '#070913', logging: false });
-            ctx.drawImage(htmlCanvas, 0, 0, width, height);
+            try {
+              const htmlCanvas = await html2canvas(targetEl, { useCORS: true, allowTaint: false, scale: dpr, backgroundColor: '#070913', logging: false });
+              ctx.drawImage(htmlCanvas, 0, 0, width, height);
+            } catch(e) {}
           }
         }
 
         // 3. 標註圖繪製：僅截取與目標視圖相同範圍的畫筆線條 (絕非全螢幕)
-        if (includeDrawing) {
+        if (includeDrawing && rect.width > 0 && rect.height > 0) {
           const drawCanvas = document.getElementById("drawCanvas");
-          if (drawCanvas) {
-            ctx.drawImage(
-              drawCanvas,
-              rect.left, rect.top, rect.width, rect.height,
-              0, 0, width, height
-            );
+          if (drawCanvas && drawCanvas.width > 0 && drawCanvas.height > 0) {
+            const sx = Math.max(0, Math.round(rect.left));
+            const sy = Math.max(0, Math.round(rect.top));
+            const sw = Math.min(drawCanvas.width - sx, Math.round(rect.width));
+            const sh = Math.min(drawCanvas.height - sy, Math.round(rect.height));
+
+            if (sw > 0 && sh > 0) {
+              ctx.drawImage(drawCanvas, sx, sy, sw, sh, 0, 0, width, height);
+            }
           }
         }
 
-        // 4. 下載到電腦
-        const imgData = canvas.toDataURL("image/png");
-        const a = document.createElement("a");
+        // 4. 下載到電腦 (若遇 Canvas 跨域限制，自動備援下載原圖)
         const d = new Date();
         const ts = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}_${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}${String(d.getSeconds()).padStart(2,'0')}`;
         const prefix = includeDrawing ? `photo-wall-annotated-${currentRoomId}` : `photo-wall-${viewMode}-${currentRoomId}`;
-        a.download = `${prefix}_${ts}.png`;
-        a.href = imgData;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
 
-        showToast("✅ 已成功下載高清圖片到電腦！");
+        let imgData = "";
+        try {
+          imgData = canvas.toDataURL("image/png");
+          const a = document.createElement("a");
+          a.download = `${prefix}_${ts}.png`;
+          a.href = imgData;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          showToast("✅ 已成功下載高清圖片到電腦！");
+        } catch(exportErr) {
+          console.warn("Canvas export fallback:", exportErr);
+          if (photos[currentIndex] && photos[currentIndex].url) {
+            const a = document.createElement("a");
+            a.download = `${prefix}_${ts}.jpg`;
+            a.href = photos[currentIndex].url;
+            a.target = "_blank";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            showToast("✅ 已成功下載照片到電腦！");
+          } else {
+            throw exportErr;
+          }
+        }
       } catch(err) {
         console.error("下載圖片失敗:", err);
-        alert("下載失敗：" + err.message);
+        alert("下載失敗：" + (err.message || "圖片跨域限制"));
       } finally {
         if (btnElement) {
           btnElement.innerHTML = originalBtnHtml;
