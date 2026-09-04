@@ -600,7 +600,7 @@
         <div class="flex items-center justify-center gap-1 text-xs font-black text-indigo-300">
           <i data-lucide="camera" class="w-3.5 h-3.5"></i><span>掃碼拍照</span>
         </div>
-        <p class="text-[10px] text-gray-400 font-mono mt-0.5">秒登大螢幕</p>
+        <p class="text-[10px] text-amber-300 font-mono font-bold mt-0.5" id="qrRoomCodeLabel">班級：default</p>
       </div>
     </div>
   </div>
@@ -1433,6 +1433,8 @@
       genOpts(document.getElementById("qrcodeContainer"), 90);
       genOpts(document.getElementById("qrcodeLargeContainer"), 240);
       document.getElementById("qrUrlLabel").innerText = uploadUrl;
+      const roomLbl = document.getElementById("qrRoomCodeLabel");
+      if (roomLbl) roomLbl.innerText = `班級：${currentRoomId}`;
     }
 
     function toggleQrExpand() { document.getElementById("qrModal").classList.toggle("hidden"); }
