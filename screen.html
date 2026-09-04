@@ -675,24 +675,24 @@
     // 2. Firestore 即時監聽 (按班級房間代碼隔離)
     // ==========================================
     function listenToPhotos() {
-      let query = db.collection("photos");
-      if (currentRoomId && currentRoomId !== "all") {
-        query = query.where("roomId", "==", currentRoomId);
-      }
-
-      query.limit(200).onSnapshot((snapshot) => {
+      db.collection("photos").limit(200).onSnapshot((snapshot) => {
         setConnectionOk();
-        snapshot.docChanges().forEach((change) => {
-          if (change.type === "added") {
-            const d = { id: change.doc.id, ...change.doc.data() };
-            if (!photos.some(p => p.id === d.id)) {
-              photos.push(d);
-              if (!isFirstLoad) onNewPhotoReceived(d);
-            }
-          } else if (change.type === "removed") {
-            photos = photos.filter(p => p.id !== change.doc.id);
-          }
+        const allList = [];
+        snapshot.forEach((doc) => {
+          allList.push({ id: doc.id, ...doc.data() });
         });
+
+        // 依房間過濾 (若是 default 房間，同時相容舊版無 roomId 的照片)
+        if (currentRoomId && currentRoomId !== "all") {
+          photos = allList.filter(p => {
+            if (currentRoomId === 'default') {
+              return !p.roomId || p.roomId === 'default';
+            }
+            return p.roomId === currentRoomId;
+          });
+        } else {
+          photos = allList;
+        }
 
         // 倒序排序 (最新在前)
         photos.sort((a, b) => {
@@ -712,7 +712,7 @@
         }
       }, (error) => {
         console.error("Firestore error:", error);
-        showConnectionError("資料庫權限或連線問題");
+        showConnectionError("資料庫權限或連線異常");
       });
     }
 
@@ -723,9 +723,8 @@
     }
     function showConnectionError(msg) {
       const el = document.getElementById("connectionStatus");
-      el.innerText = msg + " (點此設定)";
-      el.className = "text-rose-400 font-bold cursor-pointer underline";
-      el.onclick = openConfigModal;
+      el.innerText = msg;
+      el.className = "text-rose-400 font-bold";
       document.getElementById("pingDot").className = "w-2.5 h-2.5 rounded-full bg-rose-500 inline-block";
     }
 
