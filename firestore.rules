@@ -1,15 +1,19 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // 班級相片牆房間管理 (允許老師建立與查詢)
+    match /rooms/{roomId} {
+      allow read, write: if true;
+    }
+    
+    // 各班照片集合
     match /photos/{photoId} {
-      // 所有人可公開讀取與展示
       allow read: if true;
-      // 新增照片時，必須包含有效的 url 字串，防止垃圾請求覆蓋資料庫
       allow create: if request.resource.data.url is string 
                    && request.resource.data.url.size() > 0;
-      // 允許管理者/主持人刪除與更新
       allow update, delete: if true;
     }
+    
     match /{document=**} {
       allow read, write: if true;
     }

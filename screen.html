@@ -312,6 +312,13 @@
         <i data-lucide="sparkles" class="w-4 h-4 animate-spin" style="animation-duration:7s;"></i>
         <span class="tracking-wide">即時相片牆 LIVE</span>
       </div>
+      
+      <!-- 班級房間代碼徽章 -->
+      <div class="flex items-center gap-1.5 px-3 py-1 bg-indigo-500/20 border border-indigo-500/30 rounded-xl text-xs font-mono font-bold text-indigo-300">
+        <span>🏫 班級：</span>
+        <span id="headerRoomBadge" class="text-white font-black">default</span>
+      </div>
+
       <div class="flex items-center gap-2 text-xs font-mono">
         <span id="pingDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping inline-block"></span>
         <span id="connectionStatus" class="text-emerald-400 font-bold">雲端連線正常</span>
@@ -669,7 +676,14 @@
     let currentSplitSelections = [];
     let isCenterOverlayFront = true;
 
+    // 班級房間代碼處理 (預設 default)
+    const urlParams = new URLSearchParams(window.location.search);
+    let currentRoomId = (urlParams.get('room') || 'default').toLowerCase().trim();
+
     function initFirebase() {
+      const roomBadge = document.getElementById("headerRoomBadge");
+      if (roomBadge) roomBadge.innerText = currentRoomId;
+
       if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
         openConfigModal();
         return false;
@@ -708,10 +722,15 @@
     }
 
     // ==========================================
-    // 2. Firestore 即時監聽
+    // 2. Firestore 即時監聽 (按班級房間代碼隔離)
     // ==========================================
     function listenToPhotos() {
-      db.collection("photos").limit(200).onSnapshot((snapshot) => {
+      let query = db.collection("photos");
+      if (currentRoomId && currentRoomId !== "all") {
+        query = query.where("roomId", "==", currentRoomId);
+      }
+
+      query.limit(200).onSnapshot((snapshot) => {
         setConnectionOk();
         snapshot.docChanges().forEach((change) => {
           if (change.type === "added") {
@@ -1442,7 +1461,7 @@
     }
 
     // ==========================================
-    // 10. QR Code 生成
+    // 10. QR Code 生成 (精準綁定當前班級 roomId)
     // ==========================================
     function generateQRCodes() {
       let uploadUrl = customUploadUrl;
@@ -1452,6 +1471,12 @@
         else if (loc.includes("screen.html")) uploadUrl = loc.replace("screen.html", "upload.html");
         else uploadUrl = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, "/upload.html");
       }
+
+      // 自動加上 ?room=roomId 參數，保證掃碼進正確班級
+      if (!uploadUrl.includes("room=")) {
+        uploadUrl += (uploadUrl.includes("?") ? "&" : "?") + `room=${encodeURIComponent(currentRoomId)}`;
+      }
+
       const genOpts = (el, size) => {
         el.innerHTML = "";
         new QRCode(el, { text: uploadUrl, width: size, height: size, colorDark: "#090d16", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
@@ -1463,7 +1488,7 @@
 
     function toggleQrExpand() { document.getElementById("qrModal").classList.toggle("hidden"); }
 
-    // 模擬測試照片
+    // 模擬測試照片 (自動綁定當前班級)
     function addDemoPhoto() {
       const demos = [
         { url: "https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=1200", author: "小明", message: "🎉 畢業快樂！" },
@@ -1472,7 +1497,7 @@
         { url: "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=1200", author: "大東", message: "🔥 現場氣氛太嗨啦" }
       ];
       const r = demos[Math.floor(Math.random() * demos.length)];
-      const m = { id: "demo_" + Date.now(), ...r, timestamp: Date.now() };
+      const m = { id: "demo_" + Date.now(), ...r, roomId: currentRoomId, timestamp: Date.now() };
       photos.unshift(m);
       onNewPhotoReceived(m);
       updatePhotoCount();
