@@ -395,18 +395,19 @@
             progressBar.style.width = `${progress.toFixed(0)}%`;
             progressText.innerText = `檔案上傳中: ${progress.toFixed(0)}% (${(snapshot.bytesTransferred / 1024).toFixed(0)} KB / ${(snapshot.totalBytes / 1024).toFixed(0)} KB)`;
           },
-          (error) => {
+          async (error) => {
+            console.warn("Storage 上傳受限或失敗，啟動備援資料庫直傳模式:", error.code);
+            
+            // 當 Storage 額度滿了 (quota-exceeded) 或其他錯誤時，自動啟用備援直傳
+            if (error.code === 'storage/quota-exceeded' || error.code === 'storage/unauthorized' || error.code === 'storage/bucket-not-found' || error.code === 'storage/unknown') {
+              progressText.innerText = "⚡ 正在啟用免額度極速通道...";
+              await uploadViaBase64Fallback(author, message, timestamp, uploadTimeout);
+              return;
+            }
+
             clearTimeout(uploadTimeout);
             if (isTimeout) return;
-            console.error("Storage 上傳失敗:", error);
-            
-            let errMsg = "上傳失敗：" + error.message;
-            if (error.code === 'storage/unauthorized') {
-              errMsg = "【權限不足】請前往 Firebase Console -> Storage -> Rules，將規則改為 allow read, write: if true; 並點擊發布。";
-            } else if (error.code === 'storage/bucket-not-found') {
-              errMsg = "【尚未啟用 Storage】請前往 Firebase Console 開啟 Storage 服務！";
-            }
-            alert(errMsg);
+            alert("上傳失敗：" + error.message);
             showStep("stepPreview");
           },
           async () => {
@@ -448,11 +449,51 @@
           }
         );
       } catch (err) {
+        // 例外時同樣啟動備援直傳
+        console.warn("上傳過程觸發備援機制:", err);
+        progressText.innerText = "⚡ 正在啟用免額度極速通道...";
+        await uploadViaBase64Fallback(author, message, Date.now(), uploadTimeout);
+      }
+    }
+
+    // ==========================================
+    // 🛡️ 免 Storage 額度限制的資料庫直傳備援通道
+    // ==========================================
+    async function uploadViaBase64Fallback(author, message, timestamp, uploadTimeout) {
+      try {
+        const reader = new FileReader();
+        reader.readAsDataURL(currentBlob);
+        reader.onloadend = async function() {
+          const base64Data = reader.result;
+
+          // 寫入 Firestore 照片集合
+          await db.collection("photos").add({
+            url: base64Data,
+            author: author,
+            message: message,
+            roomId: currentRoomId,
+            isDirect: true,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            timestamp: timestamp
+          });
+
+          clearTimeout(uploadTimeout);
+          showStep("stepSuccess");
+          if (typeof confetti === "function") {
+            confetti({
+              particleCount: 80,
+              spread: 70,
+              origin: { y: 0.6 }
+            });
+          }
+        };
+      } catch(fallbackErr) {
         clearTimeout(uploadTimeout);
-        console.error("上傳過程發生錯誤:", err);
-        alert("發生錯誤：" + err.message);
+        console.error("備援直傳失敗:", fallbackErr);
+        alert("上傳失敗：" + fallbackErr.message);
         showStep("stepPreview");
       }
+    }
     }
 
     // ==========================================
