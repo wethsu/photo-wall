@@ -14,6 +14,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <!-- Centralized Firebase Config -->
+  <script src="firebase-config.js"></script>
 
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800;900&family=Noto+Sans+TC:wght@400;700;900&display=swap');
@@ -208,16 +210,7 @@
        JavaScript 核心邏輯
   ============================================================= -->
   <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyAwlHmSdP4FrGZUmZe7JnL28BcCq09n1P8",
-      authDomain: "test-49c68.firebaseapp.com",
-      projectId: "test-49c68",
-      storageBucket: "test-49c68.firebasestorage.app",
-      messagingSenderId: "32127977122",
-      appId: "1:32127977122:web:d0c5180e4d89ef680db9fb",
-      measurementId: "G-045MJCDSQN"
-    };
-
+    const firebaseConfig = window.FIREBASE_CONFIG;
     let auth = null;
     let db = null;
     let currentUser = null;

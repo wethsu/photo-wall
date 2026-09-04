@@ -19,6 +19,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+  <!-- Centralized Firebase Config -->
+  <script src="firebase-config.js"></script>
 
   <style>
     body {
@@ -178,21 +180,9 @@
   <!-- ========================================== -->
   <script>
     // ==========================================
-    // 1. Firebase 正式連線設定 (固化安全配置)
+    // 1. Firebase 連線設定 (引用自 firebase-config.js)
     // ==========================================
-    const firebaseConfig = {
-      apiKey: "AIzaSyAwlHmSdP4FrGZUmZe7JnL28BcCq09n1P8",
-      authDomain: "test-49c68.firebaseapp.com",
-      projectId: "test-49c68",
-      storageBucket: "test-49c68.firebasestorage.app",
-      messagingSenderId: "32127977122",
-      appId: "1:32127977122:web:d0c5180e4d89ef680db9fb",
-      measurementId: "G-045MJCDSQN"
-    };
-
-    // 清除任何舊版 localStorage 壞快取，確保 100% 使用正確金鑰
-    localStorage.removeItem("FIREBASE_CUSTOM_CONFIG");
-
+    const firebaseConfig = window.FIREBASE_CONFIG;
     let db = null;
     let storage = null;
 

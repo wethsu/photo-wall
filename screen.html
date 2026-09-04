@@ -23,6 +23,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+  <!-- Centralized Firebase Config -->
+  <script src="firebase-config.js"></script>
 
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800;900&family=Noto+Sans+TC:wght@400;700;900&display=swap');
@@ -661,20 +663,9 @@
   ============================================================= -->
   <script>
     // ==========================================
-    // 1. Firebase 金鑰設定
+    // 1. Firebase 連線設定 (引用自 firebase-config.js)
     // ==========================================
-    let firebaseConfig = {
-      apiKey: "AIzaSyAwlHmSdP4FrGZUmZe7JnL28BcCq09n1P8",
-      authDomain: "test-49c68.firebaseapp.com",
-      projectId: "test-49c68",
-      storageBucket: "test-49c68.firebasestorage.app",
-      messagingSenderId: "32127977122",
-      appId: "1:32127977122:web:d0c5180e4d89ef680db9fb",
-      measurementId: "G-045MJCDSQN"
-    };
-
-    let customUploadUrl = "";
-    localStorage.removeItem("FIREBASE_CUSTOM_CONFIG");
+    const firebaseConfig = window.FIREBASE_CONFIG;
 
     let db = null;
     let storage = null;
@@ -715,6 +706,15 @@
     // ==========================================
     // 2. Firestore 即時監聽 (按班級房間代碼隔離)
     // ==========================================
+    function getPhotoTimestamp(p) {
+      return p.timestamp || (p.createdAt?.seconds ? p.createdAt.seconds * 1000 : 0);
+    }
+
+    function formatPhotoTime(p) {
+      const tms = getPhotoTimestamp(p);
+      return tms ? new Date(tms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "剛剛";
+    }
+
     function listenToPhotos() {
       db.collection("photos").limit(200).onSnapshot((snapshot) => {
         setConnectionOk();
@@ -736,11 +736,7 @@
         }
 
         // 倒序排序 (最新在前)
-        photos.sort((a, b) => {
-          const ta = a.timestamp || (a.createdAt?.seconds * 1000) || 0;
-          const tb = b.timestamp || (b.createdAt?.seconds * 1000) || 0;
-          return tb - ta;
-        });
+        photos.sort((a, b) => getPhotoTimestamp(b) - getPhotoTimestamp(a));
 
         updatePhotoCount();
         renderThumbnailList();
@@ -887,8 +883,7 @@
 
       document.getElementById("mainAuthorTag").innerText = p.author || "現場同學";
       document.getElementById("mainMessageText").innerText = p.message || "📸 分享精彩瞬間！";
-      const tms = p.timestamp || (p.createdAt?.seconds * 1000);
-      document.getElementById("mainTimeTag").innerText = tms ? new Date(tms).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) : "剛剛";
+      document.getElementById("mainTimeTag").innerText = formatPhotoTime(p);
       highlightActiveThumbnail(index);
       triggerProgressAnimation();
     }
@@ -916,9 +911,7 @@
         d.id = `thumb-${idx}`;
         const isActive = idx === currentIndex && currentViewMode === "stage";
         d.className = `flex items-center justify-between p-2.5 rounded-2xl cursor-pointer transition-all duration-200 border group/card ${isActive ? "bg-indigo-600/35 border-indigo-400 shadow-lg scale-[1.02]" : "bg-white/5 hover:bg-white/10 border-white/5"}`;
-        
-        const tms = p.timestamp || (p.createdAt?.seconds * 1000);
-        const ts = tms ? new Date(tms).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) : "";
+        const ts = formatPhotoTime(p);
         
         d.innerHTML = `
           <div class="flex items-center gap-3 min-w-0 flex-1" onclick="switchToStageMode();setMainStage(${idx});resetAutoplayTimer();">
@@ -1773,18 +1766,11 @@
     // 10. QR Code 生成 (精準綁定當前班級 roomId)
     // ==========================================
     function generateQRCodes() {
-      let uploadUrl = customUploadUrl;
-      if (!uploadUrl) {
-        const loc = window.location.href;
-        if (loc.startsWith("file://")) uploadUrl = "https://wethsu.github.io/photo-wall/upload.html";
-        else if (loc.includes("screen.html")) uploadUrl = loc.replace("screen.html", "upload.html");
-        else uploadUrl = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, "/upload.html");
+      let uploadUrl = window.location.href.split('?')[0].replace('screen.html', 'upload.html');
+      if (!uploadUrl.includes('upload.html')) {
+        uploadUrl = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '/upload.html');
       }
-
-      // 自動加上 ?room=roomId 參數，保證掃碼進正確班級
-      if (!uploadUrl.includes("room=")) {
-        uploadUrl += (uploadUrl.includes("?") ? "&" : "?") + `room=${encodeURIComponent(currentRoomId)}`;
-      }
+      uploadUrl += `?room=${encodeURIComponent(currentRoomId)}`;
 
       const genOpts = (el, size) => {
         el.innerHTML = "";
@@ -1824,7 +1810,7 @@
       else if (k === " ") { e.preventDefault(); toggleAutoplay(); }
       else if (k === "ArrowLeft") prevPhoto();
       else if (k === "ArrowRight") nextPhoto();
-      else if (k === "Escape") { closeConfigModal(); closeVoteModal(); closeSplitDropdown(); }
+      else if (k === "Escape") { closeVoteModal(); closeSplitDropdown(); }
     });
 
     // 初始化
