@@ -273,15 +273,15 @@
       showStep("stepPreview");
       document.getElementById("compressInfo").innerText = "處理並壓縮中...";
 
-      // 使用 Canvas 壓縮圖片 (最大邊長 1600px, 畫質 0.8 JPEG)
-      compressImage(file, 1600, 0.8, (blob, originalSize, compressedSize) => {
+      // 使用 Canvas 壓縮圖片 (升級為 2K / 2560px 85吋大螢幕高畫質, 畫質 0.85 JPEG)
+      compressImage(file, 2560, 0.85, (blob, originalSize, compressedSize) => {
         currentBlob = blob;
         const previewUrl = URL.createObjectURL(blob);
         document.getElementById("previewImage").src = previewUrl;
         
-        const origKB = (originalSize / 1024).toFixed(0);
+        const origKB = (originalSize / (1024 * 1024)).toFixed(1);
         const compKB = (compressedSize / 1024).toFixed(0);
-        document.getElementById("compressInfo").innerText = `已優化: ${origKB}KB ➔ ${compKB}KB`;
+        document.getElementById("compressInfo").innerText = `2K極致畫質優化: ${origKB}MB ➔ ${compKB}KB`;
       });
 
       // 重設 input 讓同檔名也能觸發 change
