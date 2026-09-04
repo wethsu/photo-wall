@@ -583,6 +583,10 @@
   ============================================================= -->
   <canvas id="drawCanvas"></canvas>
   <div id="drawToolbar">
+    <!-- 拖曳移動把手 -->
+    <div id="drawToolbarDragHandle" class="cursor-grab active:cursor-grabbing text-gray-400 hover:text-white flex items-center pr-1 select-none" title="按住拖曳移動工具列位置">
+      <i data-lucide="grip-vertical" class="w-4 h-4"></i>
+    </div>
     <div class="flex items-center gap-2">
       <div class="draw-color-btn active" style="background:#ffffff;" data-color="#ffffff" onclick="setDrawColor(this)"></div>
       <div class="draw-color-btn" style="background:#f43f5e;" data-color="#f43f5e" onclick="setDrawColor(this)"></div>
@@ -1170,10 +1174,7 @@
         const photo5 = (selections[4] !== null && photos[selections[4]]) ? photos[selections[4]] : null;
         if (photo5) {
           centerCard.innerHTML = `
-            <img src="${photo5.url}" class="w-full h-full object-cover"/>
-            <div class="absolute top-3 left-3 px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-full text-xs font-black shadow-lg">
-              🌟 中央焦點照片
-            </div>
+            <img src="${photo5.url}" crossorigin="anonymous" class="w-full h-full object-cover"/>
             <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-4 flex items-end justify-between text-white">
               <div>
                 <span class="text-xs font-bold text-purple-300">${photo5.author||"同學"}</span>
@@ -1227,12 +1228,7 @@
 
       if (photo) {
         cell.innerHTML = `
-          <img src="${photo.url}" alt="${photo.author||''}" class="w-full h-full object-cover"/>
-          
-          <!-- 位格標籤 -->
-          <div class="absolute top-2.5 left-2.5 px-3 py-1 bg-black/60 backdrop-blur-md rounded-full text-xs font-black text-white border border-white/20">
-            ${isCenterSpotlight ? '🌟 中央焦點' : `位格 ${slotIndex + 1}`}
-          </div>
+          <img src="${photo.url}" crossorigin="anonymous" alt="${photo.author||''}" class="w-full h-full object-cover"/>
 
           <!-- 刪除按鈕 -->
           <button onclick="deletePhotoById('${photo.id}', '${photo.url}', event)" title="刪除照片" class="absolute top-2.5 right-2.5 p-2 bg-rose-600/80 hover:bg-rose-600 text-white rounded-full opacity-0 group-hover/cell:opacity-100 transition shadow-lg z-10">
@@ -1249,7 +1245,7 @@
         cell.innerHTML = `
           <div class="w-full h-full flex flex-col items-center justify-center text-gray-500 gap-2 bg-slate-900/60" onclick="reopenCurrentSplitPicker()">
             <i data-lucide="plus-circle" class="w-8 h-8 text-indigo-400/60"></i>
-            <span class="text-xs font-bold">位格 ${slotIndex + 1} (點擊選圖)</span>
+            <span class="text-xs font-bold">點擊選圖</span>
           </div>
         `;
       }
@@ -1381,6 +1377,12 @@
     let isDrawing = false, lastX = 0, lastY = 0;
     let drawColor = "#ffffff", isEraser = false;
 
+    // ==========================================
+    // 9. 畫筆標注與可拖曳工具列
+    // ==========================================
+    let isDrawing = false, lastX = 0, lastY = 0;
+    let drawColor = "#ffffff", isEraser = false;
+
     function enterDrawMode() {
       const canvas = document.getElementById("drawCanvas");
       canvas.width = window.innerWidth;
@@ -1388,14 +1390,22 @@
       document.body.classList.add("drawing-mode");
       lucide.createIcons();
     }
+
     function exitDrawMode() {
+      clearCanvas();
       document.body.classList.remove("drawing-mode");
+      const tb = document.getElementById("drawToolbar");
+      if (tb) tb.style.display = "";
     }
+
     function clearCanvas() {
       const canvas = document.getElementById("drawCanvas");
-      const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
     }
+
     function setDrawColor(el) {
       document.querySelectorAll(".draw-color-btn").forEach(b => b.classList.remove("active"));
       el.classList.add("active");
@@ -1403,6 +1413,7 @@
       isEraser = false;
       document.getElementById("eraserBtn").style.opacity = "1";
     }
+
     function toggleEraser() {
       isEraser = !isEraser;
       document.getElementById("eraserBtn").style.opacity = isEraser ? "0.5" : "1";
@@ -1412,7 +1423,9 @@
     const dc = document.getElementById("drawCanvas");
     function getPos(e) {
       const r = dc.getBoundingClientRect();
-      if (e.touches) return { x: e.touches[0].clientX - r.left, y: e.touches[0].clientY - r.top };
+      if (e.touches && e.touches.length > 0) {
+        return { x: e.touches[0].clientX - r.left, y: e.touches[0].clientY - r.top };
+      }
       return { x: e.clientX - r.left, y: e.clientY - r.top };
     }
     function drawStart(e) {
@@ -1445,8 +1458,67 @@
     dc.addEventListener("touchmove", drawMove, { passive: false });
     dc.addEventListener("touchend", drawEnd);
 
+    // 工具列拖曳移動
+    function initDraggableToolbar() {
+      const tb = document.getElementById("drawToolbar");
+      const handle = document.getElementById("drawToolbarDragHandle") || tb;
+      if (!tb) return;
+
+      let isDraggingTb = false;
+      let startMouseX = 0, startMouseY = 0;
+      let initLeft = 0, initTop = 0;
+
+      const onStart = (clientX, clientY, target) => {
+        if (target && (target.tagName === "BUTTON" || target.tagName === "INPUT" || target.classList.contains("draw-color-btn"))) {
+          return;
+        }
+        isDraggingTb = true;
+        const rect = tb.getBoundingClientRect();
+        initLeft = rect.left;
+        initTop = rect.top;
+        startMouseX = clientX;
+        startMouseY = clientY;
+        tb.style.transform = "none";
+        tb.style.left = `${initLeft}px`;
+        tb.style.top = `${initTop}px`;
+      };
+
+      handle.addEventListener("mousedown", (e) => onStart(e.clientX, e.clientY, e.target));
+      handle.addEventListener("touchstart", (e) => {
+        if (e.touches.length > 0) onStart(e.touches[0].clientX, e.touches[0].clientY, e.target);
+      }, { passive: true });
+
+      const onMove = (clientX, clientY) => {
+        if (!isDraggingTb) return;
+        const dx = clientX - startMouseX;
+        const dy = clientY - startMouseY;
+        let newX = initLeft + dx;
+        let newY = initTop + dy;
+
+        const pad = 10;
+        const maxW = window.innerWidth - tb.offsetWidth - pad;
+        const maxH = window.innerHeight - tb.offsetHeight - pad;
+        newX = Math.max(pad, Math.min(newX, maxW));
+        newY = Math.max(pad, Math.min(newY, maxH));
+
+        tb.style.left = `${newX}px`;
+        tb.style.top = `${newY}px`;
+      };
+
+      window.addEventListener("mousemove", (e) => onMove(e.clientX, e.clientY));
+      window.addEventListener("touchmove", (e) => {
+        if (isDraggingTb && e.touches.length > 0) {
+          onMove(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: false });
+
+      const onEnd = () => { isDraggingTb = false; };
+      window.addEventListener("mouseup", onEnd);
+      window.addEventListener("touchend", onEnd);
+    }
+
     // ==========================================
-    // 10. 📥 高清直接下載到電腦 (html2canvas / 截圖合成)
+    // 10. 📥 高清直接下載到電腦 (True 2K Aspect Ratio Composer)
     // ==========================================
     function showToast(msg) {
       const existing = document.getElementById("toastNotify");
@@ -1463,59 +1535,217 @@
       }, 3500);
     }
 
-    async function triggerHtml2CanvasDownload(targetElement, defaultName, btnElement = null) {
+    function drawImageCover(ctx, imgEl, dx, dy, dw, dh, fitMode = 'cover') {
+      return new Promise((resolve) => {
+        const handleDraw = (img) => {
+          const nw = img.naturalWidth || img.width;
+          const nh = img.naturalHeight || img.height;
+          if (!nw || !nh) { resolve(); return; }
+
+          const imgRatio = nw / nh;
+          const targetRatio = dw / dh;
+
+          let sx = 0, sy = 0, sw = nw, sh = nh;
+          let finalDx = dx, finalDy = dy, finalDw = dw, finalDh = dh;
+
+          if (fitMode === 'cover') {
+            if (imgRatio > targetRatio) {
+              sw = Math.round(nh * targetRatio);
+              sx = Math.round((nw - sw) / 2);
+            } else {
+              sh = Math.round(nw / targetRatio);
+              sy = Math.round((nh - sh) / 2);
+            }
+          } else if (fitMode === 'contain') {
+            if (imgRatio > targetRatio) {
+              finalDh = Math.round(dw / imgRatio);
+              finalDy = dy + Math.round((dh - finalDh) / 2);
+            } else {
+              finalDw = Math.round(dh * imgRatio);
+              finalDx = dx + Math.round((dw - finalDw) / 2);
+            }
+          }
+
+          try {
+            ctx.drawImage(img, sx, sy, sw, sh, finalDx, finalDy, finalDw, finalDh);
+            resolve();
+          } catch(e) {
+            const tempImg = new Image();
+            tempImg.crossOrigin = "anonymous";
+            tempImg.onload = () => {
+              try {
+                ctx.drawImage(tempImg, sx, sy, sw, sh, finalDx, finalDy, finalDw, finalDh);
+              } catch(err) {}
+              resolve();
+            };
+            tempImg.onerror = () => resolve();
+            tempImg.src = img.src;
+          }
+        };
+
+        if (imgEl.complete && imgEl.naturalWidth > 0) {
+          handleDraw(imgEl);
+        } else {
+          const tempImg = new Image();
+          tempImg.crossOrigin = "anonymous";
+          tempImg.onload = () => handleDraw(tempImg);
+          tempImg.onerror = () => resolve();
+          tempImg.src = imgEl.src;
+        }
+      });
+    }
+
+    async function captureViewAsImage(viewMode, includeDrawing = false, btnElement = null) {
       let originalBtnHtml = "";
       if (btnElement) {
         originalBtnHtml = btnElement.innerHTML;
-        btnElement.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>下載中...</span>`;
+        btnElement.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>合成下載中...</span>`;
         btnElement.disabled = true;
         lucide.createIcons();
       }
 
       try {
-        if (typeof html2canvas === 'undefined') {
-          throw new Error("截圖模組尚未就緒，請檢查網路連線後重試");
+        const dpr = 2; // 2x 超高清
+        let targetEl = null;
+        if (viewMode === "split") {
+          targetEl = document.getElementById("splitGridWrapper") || document.getElementById("splitGrid");
+        } else if (viewMode === "stage") {
+          targetEl = document.getElementById("stageContainer") || document.getElementById("stageView");
+        } else if (viewMode === "wall") {
+          targetEl = document.getElementById("wallView");
+        } else {
+          targetEl = document.body;
         }
 
-        const canvas = await html2canvas(targetElement, {
-          useCORS: true,
-          allowTaint: true,
-          scale: 2,
-          backgroundColor: '#070913',
-          logging: false
-        });
+        const rect = targetEl.getBoundingClientRect();
+        const width = Math.round(rect.width * dpr);
+        const height = Math.round(rect.height * dpr);
 
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+
+        // 1. 深色背景底色
+        ctx.fillStyle = "#070913";
+        ctx.fillRect(0, 0, width, height);
+
+        // 2. 繪製視圖內容 (保持真實比例，絕不壓扁變形)
+        if (viewMode === "split") {
+          const cells = targetEl.querySelectorAll(".split-cell, #centerFloatingCard");
+          for (const cell of cells) {
+            const cRect = cell.getBoundingClientRect();
+            const x = Math.round((cRect.left - rect.left) * dpr);
+            const y = Math.round((cRect.top - rect.top) * dpr);
+            const w = Math.round(cRect.width * dpr);
+            const h = Math.round(cRect.height * dpr);
+            const radius = Math.round(18 * dpr);
+
+            ctx.save();
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(x, y, w, h, radius);
+            else ctx.rect(x, y, w, h);
+            ctx.clip();
+
+            ctx.fillStyle = "#0f172a";
+            ctx.fillRect(x, y, w, h);
+
+            const img = cell.querySelector("img");
+            if (img && img.src) {
+              await drawImageCover(ctx, img, x, y, w, h, 'cover');
+            }
+
+            // 底部作者與留言漸層 (無任何「位格1/2」標籤文字)
+            const authorEl = cell.querySelector("span");
+            const msgEl = cell.querySelector("p");
+            const author = authorEl ? authorEl.innerText.trim() : "";
+            const msg = msgEl ? msgEl.innerText.trim() : "";
+
+            if (author || msg) {
+              const gradH = Math.round(65 * dpr);
+              const grad = ctx.createLinearGradient(x, y + h - gradH, x, y + h);
+              grad.addColorStop(0, "rgba(0,0,0,0)");
+              grad.addColorStop(1, "rgba(0,0,0,0.85)");
+              ctx.fillStyle = grad;
+              ctx.fillRect(x, y + h - gradH, w, gradH);
+
+              if (author) {
+                ctx.fillStyle = "#818cf8";
+                ctx.font = `bold ${Math.round(12 * dpr)}px 'Noto Sans TC', -apple-system, sans-serif`;
+                ctx.fillText(author, x + Math.round(14 * dpr), y + h - Math.round(28 * dpr));
+              }
+              if (msg) {
+                ctx.fillStyle = "#f8fafc";
+                ctx.font = `${Math.round(11 * dpr)}px 'Noto Sans TC', -apple-system, sans-serif`;
+                ctx.fillText(msg, x + Math.round(14 * dpr), y + h - Math.round(10 * dpr));
+              }
+            }
+
+            ctx.restore();
+
+            // 圓角邊框
+            ctx.save();
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(x, y, w, h, radius);
+            else ctx.rect(x, y, w, h);
+            ctx.strokeStyle = "rgba(255,255,255,0.15)";
+            ctx.lineWidth = Math.round(2 * dpr);
+            ctx.stroke();
+            ctx.restore();
+          }
+        } else if (viewMode === "stage") {
+          const img = document.getElementById("mainStageImg");
+          if (img && img.src) {
+            const iRect = img.getBoundingClientRect();
+            const ix = Math.round((iRect.left - rect.left) * dpr);
+            const iy = Math.round((iRect.top - rect.top) * dpr);
+            const iw = Math.round(iRect.width * dpr);
+            const ih = Math.round(iRect.height * dpr);
+
+            ctx.save();
+            const radius = Math.round(16 * dpr);
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(ix, iy, iw, ih, radius);
+            else ctx.rect(ix, iy, iw, ih);
+            ctx.clip();
+            await drawImageCover(ctx, img, ix, iy, iw, ih, 'contain');
+            ctx.restore();
+          }
+        } else {
+          if (typeof html2canvas !== 'undefined') {
+            const htmlCanvas = await html2canvas(targetEl, { useCORS: true, allowTaint: true, scale: dpr, backgroundColor: '#070913', logging: false });
+            ctx.drawImage(htmlCanvas, 0, 0, width, height);
+          }
+        }
+
+        // 3. 標註圖繪製：僅截取與目標視圖相同範圍的畫筆線條 (絕非全螢幕)
+        if (includeDrawing) {
+          const drawCanvas = document.getElementById("drawCanvas");
+          if (drawCanvas) {
+            ctx.drawImage(
+              drawCanvas,
+              rect.left, rect.top, rect.width, rect.height,
+              0, 0, width, height
+            );
+          }
+        }
+
+        // 4. 下載到電腦
         const imgData = canvas.toDataURL("image/png");
         const a = document.createElement("a");
         const d = new Date();
         const ts = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}_${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}${String(d.getSeconds()).padStart(2,'0')}`;
-        a.download = `${defaultName}_${ts}.png`;
+        const prefix = includeDrawing ? `photo-wall-annotated-${currentRoomId}` : `photo-wall-${viewMode}-${currentRoomId}`;
+        a.download = `${prefix}_${ts}.png`;
         a.href = imgData;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
 
         showToast("✅ 已成功下載高清圖片到電腦！");
-      } catch (err) {
+      } catch(err) {
         console.error("下載圖片失敗:", err);
-        try {
-          const fallbackCanvas = await html2canvas(targetElement, {
-            allowTaint: true,
-            useCORS: false,
-            scale: 2,
-            backgroundColor: '#070913'
-          });
-          const imgData = fallbackCanvas.toDataURL("image/png");
-          const a = document.createElement("a");
-          a.download = `${defaultName}_${Date.now()}.png`;
-          a.href = imgData;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          showToast("✅ 已成功下載圖片到電腦！");
-        } catch (e2) {
-          alert("自動下載失敗：" + (err.message || e2.message));
-        }
+        alert("下載失敗：" + err.message);
       } finally {
         if (btnElement) {
           btnElement.innerHTML = originalBtnHtml;
@@ -1525,34 +1755,19 @@
       }
     }
 
-    // 1. 分割畫面下載
+    // 1. 分割畫面直接下載
     function downloadSplitViewImage(btn) {
-      const splitTarget = document.getElementById("splitGridWrapper") || document.getElementById("splitView");
-      triggerHtml2CanvasDownload(splitTarget, `photo-wall-split-${currentRoomId}`, btn);
+      captureViewAsImage("split", false, btn);
     }
 
-    // 2. 畫筆標注圖下載 (合成底圖 + 筆跡)
-    async function downloadDrawnCanvas(btn) {
-      const tb = document.getElementById("drawToolbar");
-      if (tb) tb.style.display = "none";
-
-      try {
-        await triggerHtml2CanvasDownload(document.body, `photo-wall-draw-${currentRoomId}`, btn);
-      } finally {
-        if (tb && document.body.classList.contains("drawing-mode")) {
-          tb.style.display = "flex";
-        }
-      }
+    // 2. 標注好的圖下載 (限制在視圖相同範圍，合成底圖 + 筆跡)
+    function downloadDrawnCanvas(btn) {
+      captureViewAsImage(currentViewMode, true, btn);
     }
 
-    // 3. 截圖存儲 (全螢幕/當前視圖直接下載)
+    // 3. 截圖存儲
     function saveScreenshot(btn) {
-      let target = document.body;
-      if (currentViewMode === "stage") target = document.getElementById("stageContainer") || document.body;
-      else if (currentViewMode === "split") target = document.getElementById("splitGridWrapper") || document.body;
-      else if (currentViewMode === "wall") target = document.getElementById("wallView") || document.body;
-      
-      triggerHtml2CanvasDownload(target, `photo-wall-${currentViewMode}-${currentRoomId}`, btn);
+      captureViewAsImage(currentViewMode, false, btn);
     }
 
     // ==========================================
@@ -1619,6 +1834,7 @@
       generateQRCodes();
       initFirebase();
       startAutoplay();
+      initDraggableToolbar();
 
       const unlock = () => {
         try { const A = window.AudioContext || window.webkitAudioContext; if(A) { const c = new A(); c.resume().then(() => c.close()); } } catch(e) {}
