@@ -13,6 +13,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Canvas Confetti CDN -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <!-- html2canvas for Direct High-Res Downloads -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
   <!-- Firebase SDKs (Compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -23,6 +25,13 @@
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800;900&family=Noto+Sans+TC:wght@400;700;900&display=swap');
 
     *, *::before, *::after { box-sizing: border-box; }
+
+    /* 分割模式下隱藏右下角常駐 QR Code 與浮動工具球，避免遮擋照片 */
+    body.split-mode #qrFloatCard,
+    body.split-mode #floatBall,
+    body.split-mode #floatMenu {
+      display: none !important;
+    }
 
     body {
       font-family: 'Plus Jakarta Sans', 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -445,23 +454,43 @@
     </main>
 
     <!-- 3️⃣ 分割網格模式 (Split View) -->
-    <main id="splitView" class="hidden w-full h-full p-6 flex flex-col">
-      <!-- 頂部操作小列 (退出/重選/置後切換) -->
-      <div class="flex items-center justify-between pb-3 shrink-0">
+    <main id="splitView" class="hidden w-full h-full p-4 flex flex-col">
+      <!-- 頂部操作列 (整合設定、掃碼、投票、標註、下載、重選與切換) -->
+      <div class="flex flex-wrap items-center justify-between pb-3 gap-2 shrink-0 border-b border-white/10 mb-2">
         <div class="flex items-center gap-3">
-          <span id="splitTitleTag" class="px-3.5 py-1 bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-xs font-black rounded-xl">
+          <span id="splitTitleTag" class="px-3.5 py-1.5 bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-xs font-black rounded-xl shadow-md">
             四方格分割模式
           </span>
-          <button onclick="reopenCurrentSplitPicker()" class="text-xs font-bold text-indigo-300 hover:text-indigo-200 underline flex items-center gap-1">
+          <button onclick="reopenCurrentSplitPicker()" class="text-xs font-bold text-indigo-300 hover:text-white bg-indigo-500/20 hover:bg-indigo-500/30 px-3 py-1.5 rounded-xl border border-indigo-500/30 transition flex items-center gap-1.5">
             <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>更換選取的照片
           </button>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
           <!-- 4+1 浮層模式專用：切換置前/置後按鈕 -->
           <button id="toggleCenterOverlayBtn" onclick="toggleCenterCardLayer()" class="hidden px-3 py-1.5 bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-400/40 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
             <i data-lucide="layers" class="w-3.5 h-3.5"></i>
-            <span id="centerLayerBtnText">中間焦點：已置頂 (點擊置後)</span>
+            <span id="centerLayerBtnText">中間焦點：已置頂</span>
+          </button>
+
+          <!-- 📱 掃碼拍照 (分割模式頂部呼出大 QR 碼) -->
+          <button onclick="toggleQrExpand()" class="px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-bold transition flex items-center gap-1.5" title="顯示手機拍照上傳 QR Code">
+            <i data-lucide="qr-code" class="w-3.5 h-3.5"></i><span>掃碼拍照</span>
+          </button>
+
+          <!-- 🗳️ 即時投票 -->
+          <button onclick="openVoteModal()" class="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold transition flex items-center gap-1.5" title="啟動現場投票">
+            <i data-lucide="bar-chart-2" class="w-3.5 h-3.5"></i><span>即時投票</span>
+          </button>
+
+          <!-- ✏️ 畫筆標註 -->
+          <button onclick="enterDrawMode()" class="px-3 py-1.5 bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 border border-pink-500/30 rounded-xl text-xs font-bold transition flex items-center gap-1.5" title="開啟全螢幕畫筆標註">
+            <i data-lucide="pencil" class="w-3.5 h-3.5"></i><span>畫筆標註</span>
+          </button>
+
+          <!-- 📥 下載到電腦 (自動渲染下載高清圖，非手動截圖) -->
+          <button onclick="downloadSplitViewImage(this)" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-lg shadow-emerald-600/30" title="直接下載高畫質分割畫面到電腦">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i><span>下載到電腦</span>
           </button>
           
           <button onclick="switchToStageMode()" class="px-3.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5">
@@ -567,6 +596,11 @@
     <div class="w-px h-5 bg-white/20"></div>
     <button onclick="toggleEraser()" id="eraserBtn" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold transition">橡皮擦</button>
     <button onclick="clearCanvas()" class="px-3 py-1 rounded-lg bg-rose-600/70 hover:bg-rose-600 text-xs font-bold transition">清除</button>
+    <!-- 📥 下載畫好的圖 -->
+    <button onclick="downloadDrawnCanvas(this)" class="px-3.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition flex items-center gap-1.5 shadow-md shadow-emerald-600/30" title="直接下載合成好的標注圖片到電腦">
+      <i data-lucide="download" class="w-3.5 h-3.5"></i><span>下載畫好的圖</span>
+    </button>
+    <div class="w-px h-5 bg-white/20"></div>
     <button onclick="exitDrawMode()" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold transition flex items-center gap-1">
       <i data-lucide="x" class="w-3.5 h-3.5"></i><span>關閉</span>
     </button>
@@ -932,22 +966,26 @@
 
     function switchToStageMode() {
       currentViewMode = "stage";
+      document.body.classList.remove("split-mode");
       document.getElementById("stageView").classList.remove("hidden");
       document.getElementById("wallView").classList.add("hidden");
       document.getElementById("splitView").classList.add("hidden");
       document.getElementById("currentLayoutLabel").innerText = "主舞台模式";
       closeSplitDropdown();
       if (photos.length > 0) setMainStage(currentIndex);
+      lucide.createIcons();
     }
 
     function switchToWallMode() {
       currentViewMode = "wall";
+      document.body.classList.remove("split-mode");
       document.getElementById("stageView").classList.add("hidden");
       document.getElementById("wallView").classList.remove("hidden");
       document.getElementById("splitView").classList.add("hidden");
       document.getElementById("currentLayoutLabel").innerText = "全屏照片牆";
       closeSplitDropdown();
       renderWallGrid();
+      lucide.createIcons();
     }
 
     // 全屏照片牆渲染
@@ -1079,6 +1117,8 @@
     function confirmSplitPicker() {
       document.getElementById("photoPicker").classList.remove("open");
       currentViewMode = "split";
+      document.body.classList.add("split-mode");
+      closeFloatMenu();
       
       document.getElementById("stageView").classList.add("hidden");
       document.getElementById("wallView").classList.add("hidden");
@@ -1098,6 +1138,7 @@
       }
 
       renderSplitGrid();
+      lucide.createIcons();
     }
 
     function renderSplitGrid() {
@@ -1404,9 +1445,114 @@
     dc.addEventListener("touchmove", drawMove, { passive: false });
     dc.addEventListener("touchend", drawEnd);
 
-    // 截圖存儲
-    function saveScreenshot() {
-      alert("💡 提示：可使用全螢幕截圖鍵（Windows: Win+Shift+S / Mac: Cmd+Shift+4）快速存取全高畫質畫面！");
+    // ==========================================
+    // 10. 📥 高清直接下載到電腦 (html2canvas / 截圖合成)
+    // ==========================================
+    function showToast(msg) {
+      const existing = document.getElementById("toastNotify");
+      if (existing) existing.remove();
+
+      const toast = document.createElement("div");
+      toast.id = "toastNotify";
+      toast.className = "fixed top-20 left-1/2 -translate-x-1/2 z-[400] bg-emerald-600/95 text-white px-5 py-2.5 rounded-2xl text-xs font-black shadow-2xl backdrop-blur-md flex items-center gap-2 border border-emerald-400/40 animate-bounce";
+      toast.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-white"></i><span>${msg}</span>`;
+      document.body.appendChild(toast);
+      lucide.createIcons();
+      setTimeout(() => {
+        if (toast.parentNode) toast.remove();
+      }, 3500);
+    }
+
+    async function triggerHtml2CanvasDownload(targetElement, defaultName, btnElement = null) {
+      let originalBtnHtml = "";
+      if (btnElement) {
+        originalBtnHtml = btnElement.innerHTML;
+        btnElement.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>下載中...</span>`;
+        btnElement.disabled = true;
+        lucide.createIcons();
+      }
+
+      try {
+        if (typeof html2canvas === 'undefined') {
+          throw new Error("截圖模組尚未就緒，請檢查網路連線後重試");
+        }
+
+        const canvas = await html2canvas(targetElement, {
+          useCORS: true,
+          allowTaint: true,
+          scale: 2,
+          backgroundColor: '#070913',
+          logging: false
+        });
+
+        const imgData = canvas.toDataURL("image/png");
+        const a = document.createElement("a");
+        const d = new Date();
+        const ts = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}_${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}${String(d.getSeconds()).padStart(2,'0')}`;
+        a.download = `${defaultName}_${ts}.png`;
+        a.href = imgData;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        showToast("✅ 已成功下載高清圖片到電腦！");
+      } catch (err) {
+        console.error("下載圖片失敗:", err);
+        try {
+          const fallbackCanvas = await html2canvas(targetElement, {
+            allowTaint: true,
+            useCORS: false,
+            scale: 2,
+            backgroundColor: '#070913'
+          });
+          const imgData = fallbackCanvas.toDataURL("image/png");
+          const a = document.createElement("a");
+          a.download = `${defaultName}_${Date.now()}.png`;
+          a.href = imgData;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          showToast("✅ 已成功下載圖片到電腦！");
+        } catch (e2) {
+          alert("自動下載失敗：" + (err.message || e2.message));
+        }
+      } finally {
+        if (btnElement) {
+          btnElement.innerHTML = originalBtnHtml;
+          btnElement.disabled = false;
+          lucide.createIcons();
+        }
+      }
+    }
+
+    // 1. 分割畫面下載
+    function downloadSplitViewImage(btn) {
+      const splitTarget = document.getElementById("splitGridWrapper") || document.getElementById("splitView");
+      triggerHtml2CanvasDownload(splitTarget, `photo-wall-split-${currentRoomId}`, btn);
+    }
+
+    // 2. 畫筆標注圖下載 (合成底圖 + 筆跡)
+    async function downloadDrawnCanvas(btn) {
+      const tb = document.getElementById("drawToolbar");
+      if (tb) tb.style.display = "none";
+
+      try {
+        await triggerHtml2CanvasDownload(document.body, `photo-wall-draw-${currentRoomId}`, btn);
+      } finally {
+        if (tb && document.body.classList.contains("drawing-mode")) {
+          tb.style.display = "flex";
+        }
+      }
+    }
+
+    // 3. 截圖存儲 (全螢幕/當前視圖直接下載)
+    function saveScreenshot(btn) {
+      let target = document.body;
+      if (currentViewMode === "stage") target = document.getElementById("stageContainer") || document.body;
+      else if (currentViewMode === "split") target = document.getElementById("splitGridWrapper") || document.body;
+      else if (currentViewMode === "wall") target = document.getElementById("wallView") || document.body;
+      
+      triggerHtml2CanvasDownload(target, `photo-wall-${currentViewMode}-${currentRoomId}`, btn);
     }
 
     // ==========================================
