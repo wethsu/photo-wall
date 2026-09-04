@@ -166,11 +166,8 @@
   </main>
 
   <!-- Footer -->
-  <footer class="text-center text-[11px] text-white/80 py-2">
-    <div class="inline-flex items-center justify-center space-x-1 cursor-pointer bg-black/20 px-3 py-1.5 rounded-full backdrop-blur-sm" onclick="openConfigModal()">
-      <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-300"></i>
-      <span>Firebase 連線已配置 (點擊可更換金鑰)</span>
-    </div>
+  <footer class="text-center text-[11px] text-white/60 py-2">
+    <span>即時互動相片牆 • 雲端極速同步</span>
   </footer>
 
   <!-- ========================================== -->
@@ -178,9 +175,9 @@
   <!-- ========================================== -->
   <script>
     // ==========================================
-    // 1. Firebase 設定 (可直接在此填入或由網頁輸入)
+    // 1. Firebase 正式連線設定 (固化安全配置)
     // ==========================================
-    let firebaseConfig = {
+    const firebaseConfig = {
       apiKey: "AIzaSyAwlHmSdP4FrGZUmZe7JnL28BcCq09n1P8",
       authDomain: "test-49c68.firebaseapp.com",
       projectId: "test-49c68",
@@ -190,24 +187,13 @@
       measurementId: "G-045MJCDSQN"
     };
 
-    // 優先讀取 localStorage 設定
-    const savedConfig = localStorage.getItem("FIREBASE_CUSTOM_CONFIG");
-    if (savedConfig) {
-      try {
-        firebaseConfig = JSON.parse(savedConfig);
-      } catch (e) {
-        console.error("載入自訂設定失敗:", e);
-      }
-    }
+    // 清除任何舊版 localStorage 壞快取，確保 100% 使用正確金鑰
+    localStorage.removeItem("FIREBASE_CUSTOM_CONFIG");
 
     let db = null;
     let storage = null;
 
     function initFirebase() {
-      if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
-        openConfigModal();
-        return false;
-      }
       try {
         if (!firebase.apps.length) {
           firebase.initializeApp(firebaseConfig);
@@ -217,31 +203,11 @@
         return true;
       } catch (err) {
         console.error("Firebase 初始化失敗:", err);
-        alert("Firebase 初始化失敗，請檢查設定內容是否正確！");
-        openConfigModal();
         return false;
       }
     }
 
-    function openConfigModal() {
-      document.getElementById("configModal").classList.remove("hidden");
-      document.getElementById("configInput").value = JSON.stringify(firebaseConfig, null, 2);
-    }
 
-    function saveCustomConfig() {
-      const raw = document.getElementById("configInput").value.trim();
-      try {
-        const parsed = JSON.parse(raw);
-        if (!parsed.apiKey || !parsed.projectId) {
-          alert("設定格式不正確，至少需要 apiKey 與 projectId");
-          return;
-        }
-        localStorage.setItem("FIREBASE_CUSTOM_CONFIG", JSON.stringify(parsed));
-        location.reload();
-      } catch (err) {
-        alert("JSON 格式解析錯誤，請確認貼上的是正確的 JSON 物件！");
-      }
-    }
 
     // ==========================================
     // 2. 前端圖片選擇與 Canvas 智慧壓縮

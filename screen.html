@@ -633,10 +633,7 @@
     };
 
     let customUploadUrl = "";
-    const savedConfig = localStorage.getItem("FIREBASE_CUSTOM_CONFIG");
-    if (savedConfig) { try { firebaseConfig = JSON.parse(savedConfig); } catch(e){} }
-    const savedUrl = localStorage.getItem("CUSTOM_UPLOAD_URL");
-    if (savedUrl) customUploadUrl = savedUrl;
+    localStorage.removeItem("FIREBASE_CUSTOM_CONFIG");
 
     let db = null;
     let storage = null;
@@ -661,10 +658,6 @@
       const roomBadge = document.getElementById("headerRoomBadge");
       if (roomBadge) roomBadge.innerText = currentRoomId;
 
-      if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
-        openConfigModal();
-        return false;
-      }
       try {
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         db = firebase.firestore();
@@ -676,26 +669,6 @@
         showConnectionError("Firebase 連線異常");
         return false;
       }
-    }
-
-    function openConfigModal() {
-      document.getElementById("configModal").classList.remove("hidden");
-      document.getElementById("configInput").value = JSON.stringify(firebaseConfig, null, 2);
-      document.getElementById("uploadUrlInput").value = customUploadUrl;
-    }
-    function closeConfigModal() {
-      document.getElementById("configModal").classList.add("hidden");
-    }
-    function saveCustomConfig() {
-      const raw = document.getElementById("configInput").value.trim();
-      const urlRaw = document.getElementById("uploadUrlInput").value.trim();
-      try {
-        const parsed = JSON.parse(raw);
-        if (!parsed.apiKey || !parsed.projectId) { alert("設定格式不正確"); return; }
-        localStorage.setItem("FIREBASE_CUSTOM_CONFIG", JSON.stringify(parsed));
-        urlRaw ? localStorage.setItem("CUSTOM_UPLOAD_URL", urlRaw) : localStorage.removeItem("CUSTOM_UPLOAD_URL");
-        location.reload();
-      } catch(e) { alert("JSON 格式錯誤！"); }
     }
 
     // ==========================================
