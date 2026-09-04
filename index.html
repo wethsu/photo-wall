@@ -3,9 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>📸 班級互動相片牆 - 教師後台與班級分流中心</title>
+  <title>📸 班級相片牆 - 教師專屬管理中心</title>
   
+  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons CDN -->
   <script src="https://unpkg.com/lucide@latest"></script>
   
   <!-- Firebase SDKs -->
@@ -17,28 +19,28 @@
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800;900&family=Noto+Sans+TC:wght@400;700;900&display=swap');
     body {
       font-family: 'Plus Jakarta Sans', 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: radial-gradient(circle at top center, #1e1b4b 0%, #0b0f19 100%);
+      background: radial-gradient(circle at top center, #1e1b4b 0%, #070913 100%);
       min-height: 100vh;
       color: #f8fafc;
     }
     .glass-card {
-      background: rgba(30, 41, 59, 0.75);
+      background: rgba(30, 41, 59, 0.78);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
       border: 1px solid rgba(255, 255, 255, 0.12);
     }
     .glass-panel {
-      background: rgba(15, 23, 42, 0.85);
+      background: rgba(15, 23, 42, 0.88);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
       border: 1px solid rgba(255, 255, 255, 0.1);
     }
   </style>
 </head>
-<body class="flex flex-col justify-between p-4 sm:p-8 antialiased">
+<body class="flex flex-col justify-between p-4 sm:p-8 antialiased min-h-screen">
 
   <!-- ============================================================
-       頂部 Header & 教師登入區
+       頂部導覽列
   ============================================================= -->
   <header class="max-w-5xl mx-auto w-full flex items-center justify-between py-4 border-b border-white/10 shrink-0">
     <div class="flex items-center gap-3">
@@ -47,67 +49,117 @@
       </div>
       <div>
         <h1 class="text-xl sm:text-2xl font-black tracking-tight text-white">班級互動相片牆</h1>
-        <p class="text-xs text-indigo-200 font-medium">多班級獨立分流系統 • 虛擬房間隔離</p>
+        <p class="text-xs text-indigo-200 font-medium">教師獨立後台 • 班級相片完全隔離</p>
       </div>
     </div>
 
-    <!-- 教師帳號狀態 / Google 登入按鈕 -->
-    <div id="authArea" class="flex items-center gap-3">
-      <!-- 登入前 -->
-      <div id="loggedOutView" class="flex items-center gap-2">
-        <button onclick="loginWithGoogle()" class="flex items-center gap-2 bg-white hover:bg-gray-100 text-gray-900 font-bold px-4 py-2 rounded-xl text-xs sm:text-sm shadow-md transition transform active:scale-95">
-          <svg class="w-4 h-4" viewBox="0 0 24 24">
-            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-          </svg>
-          <span>Google 登入</span>
-        </button>
-      </div>
-
-      <!-- 登入後 -->
-      <div id="loggedInView" class="hidden flex items-center gap-3">
+    <!-- 右上角登入狀態 -->
+    <div id="headerAuthArea">
+      <!-- 登入後顯示個人資訊 -->
+      <div id="headerUserView" class="hidden flex items-center gap-3">
         <div class="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
-          <img id="userAvatar" src="" class="w-6 h-6 rounded-full border border-white/30" />
-          <span id="userName" class="text-xs font-bold text-gray-200">教師</span>
+          <img id="headerUserAvatar" src="" class="w-6 h-6 rounded-full border border-white/30" />
+          <span id="headerUserName" class="text-xs font-bold text-gray-200 truncate max-w-[140px]">教師</span>
         </div>
-        <button onclick="logout()" class="text-xs text-gray-400 hover:text-white underline">登出</button>
+        <button onclick="logout()" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-bold text-gray-300 hover:text-white rounded-xl transition">
+          登出
+        </button>
       </div>
     </div>
   </header>
 
   <!-- ============================================================
-       主要操作大廳 (Portal Lobby)
+       主要內容區域
   ============================================================= -->
   <main class="max-w-5xl mx-auto w-full my-8 space-y-8 flex-1">
 
-    <!-- 區塊 1: 建立新相片牆 & 快速輸入代碼進入 -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <!-- ========================================================
+         狀態 A: 未登入狀態 (路人/未登入視圖，保護隱私不洩漏任何房間)
+    ======================================================== -->
+    <div id="loggedOutState" class="max-w-lg mx-auto space-y-6 pt-4">
       
-      <!-- ➕ 建立新班級相片牆 (2欄寬) -->
-      <div class="md:col-span-2 glass-card rounded-3xl p-6 sm:p-8 space-y-5">
-        <div class="flex items-center justify-between">
+      <!-- 登入卡片 -->
+      <div class="glass-card rounded-3xl p-8 text-center space-y-6 shadow-2xl border border-indigo-500/30">
+        <div class="w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 mx-auto flex items-center justify-center shadow-lg shadow-indigo-500/30">
+          <i data-lucide="lock" class="w-8 h-8 text-white"></i>
+        </div>
+        
+        <div>
+          <h2 class="text-2xl font-black text-white">教師專屬登入</h2>
+          <p class="text-xs text-gray-300 mt-2 leading-relaxed">
+            為保障各班級照片隱私，請先登入 Google 帳號。<br />
+            登入後僅會顯示與管理<span class="text-indigo-300 font-bold">「您自己班級」</span>的相片牆。
+          </p>
+        </div>
+
+        <!-- Google 登入按鈕 -->
+        <button onclick="loginWithGoogle()" id="googleLoginBtn" class="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-100 text-gray-900 font-bold py-3.5 px-6 rounded-2xl shadow-xl transition transform active:scale-95 text-sm sm:text-base">
+          <svg class="w-5 h-5" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          </svg>
+          <span>使用 Google 帳號登入</span>
+        </button>
+
+        <!-- Firebase 啟用提示 -->
+        <div id="authDiagnosticNotice" class="hidden p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-left text-xs text-amber-200 space-y-1">
+          <p class="font-bold">⚠️ Firebase Google 登入尚未啟用：</p>
+          <p class="text-[11px] text-gray-300">請前往 <a href="https://console.firebase.google.com/project/test-49c68/authentication/providers" target="_blank" class="underline text-amber-300 font-bold">Firebase 控制台</a> 點選「Google」並開啟啟用；並在 Settings > Authorized domains 加入 <code class="bg-white/10 px-1 rounded">wethsu.github.io</code>。</p>
+        </div>
+      </div>
+
+      <!-- 學生/嘉賓憑代碼直接進入 -->
+      <div class="glass-panel rounded-3xl p-6 text-center space-y-3 border border-white/10">
+        <div class="flex items-center justify-center gap-2 text-purple-300">
+          <i data-lucide="key" class="w-4 h-4"></i>
+          <span class="text-xs font-bold uppercase tracking-wider">我是學生 / 已有專屬班級代碼</span>
+        </div>
+        <div class="flex gap-2">
+          <input type="text" id="guestCodeInput" placeholder="請輸入代碼 (例如：sjps-0904-8a)" class="flex-1 px-4 py-2.5 text-xs bg-black/60 border border-gray-700 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-white font-mono text-center uppercase" />
+          <button onclick="guestEnter('upload')" class="px-4 py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-bold rounded-xl text-xs transition">
+            前往上傳
+          </button>
+          <button onclick="guestEnter('screen')" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition">
+            開大螢幕
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ========================================================
+         狀態 B: 已登入狀態 (教師專屬管理大廳，只顯示自己建立的班級)
+    ======================================================== -->
+    <div id="loggedInState" class="hidden space-y-8">
+      
+      <!-- 建立新相片牆卡片 -->
+      <div class="glass-card rounded-3xl p-6 sm:p-8 space-y-5 border border-indigo-500/30">
+        <div class="flex items-center justify-between border-b border-white/10 pb-4">
           <div class="flex items-center gap-3 text-indigo-400">
             <i data-lucide="plus-circle" class="w-6 h-6"></i>
-            <h2 class="text-xl font-black text-white">建立新的班級相片牆</h2>
+            <div>
+              <h2 class="text-xl font-black text-white">建立新的班級相片牆</h2>
+              <p class="text-xs text-gray-400">建立後將自動配發獨立代碼，其他班級絕無權限查看</p>
+            </div>
           </div>
-          <span class="text-[11px] font-bold px-2.5 py-1 bg-indigo-500/20 text-indigo-300 rounded-full border border-indigo-500/30">
-            一鍵自動配發專屬代碼
+          <span class="text-xs font-bold px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
+            已驗證教師身分
           </span>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label class="block text-xs font-bold text-gray-300 mb-1.5">班級 / 活動名稱：</label>
-            <input type="text" id="roomNameInput" placeholder="例如：6年1班 畢業同樂會" class="w-full px-4 py-3 text-sm bg-black/50 border border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-white font-medium" />
+            <input type="text" id="roomNameInput" placeholder="例如：601 班同樂會、三年甲班校外教學" class="w-full px-4 py-3 text-sm bg-black/50 border border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-white font-medium" />
           </div>
 
           <div>
             <div class="flex items-center justify-between mb-1.5">
-              <label class="block text-xs font-bold text-gray-300">專屬代碼 (虛擬ID)：</label>
+              <label class="block text-xs font-bold text-gray-300">專屬虛擬 ID (代碼)：</label>
               <button onclick="refreshRandomCode()" class="text-[11px] text-indigo-300 hover:text-indigo-200 font-bold flex items-center gap-1">
-                <i data-lucide="refresh-cw" class="w-3 h-3"></i>隨機換一組
+                <i data-lucide="refresh-cw" class="w-3 h-3"></i>換一組隨機代碼
               </button>
             </div>
             <input type="text" id="roomCodeInput" class="w-full px-4 py-3 text-sm bg-black/50 border border-indigo-500/40 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-indigo-300 font-mono font-bold" />
@@ -116,70 +168,44 @@
 
         <button onclick="createNewRoom()" class="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-bold py-3.5 px-6 rounded-2xl shadow-xl transition transform active:scale-98">
           <i data-lucide="sparkles" class="w-5 h-5"></i>
-          <span>立即建立專屬班級相片牆</span>
+          <span>立即建立專屬相片牆</span>
         </button>
       </div>
 
-      <!-- 🔍 輸入代碼直接加入 (1欄寬) -->
-      <div class="glass-card rounded-3xl p-6 sm:p-8 flex flex-col justify-between space-y-4">
-        <div>
-          <div class="flex items-center gap-2 text-purple-400 mb-2">
-            <i data-lucide="key" class="w-5 h-5"></i>
-            <h2 class="text-lg font-black text-white">已有班級代碼？</h2>
+      <!-- 我的班級相片牆清單 (只有自己看得到) -->
+      <div class="glass-card rounded-3xl p-6 sm:p-8 space-y-5">
+        <div class="flex items-center justify-between border-b border-white/10 pb-4">
+          <div class="flex items-center gap-3">
+            <i data-lucide="folder-heart" class="w-6 h-6 text-purple-400"></i>
+            <div>
+              <h2 class="text-xl font-black text-white">我的班級相片牆清單</h2>
+              <p class="text-xs text-gray-400">以下僅顯示您個人帳號建立的班級，保障隱私</p>
+            </div>
           </div>
-          <p class="text-xs text-gray-400 leading-relaxed">
-            輸入其他老師或已建立的代碼，直接開啟大螢幕或上傳端：
-          </p>
+          <span id="myRoomCountBadge" class="text-xs font-bold px-3 py-1 bg-white/10 rounded-full text-gray-300">
+            共 0 個相片牆
+          </span>
         </div>
 
-        <div class="space-y-3">
-          <input type="text" id="quickCodeInput" placeholder="例如：sjps-0904-8a" class="w-full px-4 py-2.5 text-sm bg-black/50 border border-gray-700 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-white font-mono text-center uppercase" />
-          
-          <div class="grid grid-cols-2 gap-2">
-            <button onclick="quickJoin('screen')" class="flex items-center justify-center gap-1 bg-indigo-600/80 hover:bg-indigo-600 text-white font-bold py-2.5 rounded-xl text-xs transition">
-              <i data-lucide="tv" class="w-3.5 h-3.5"></i>開大螢幕
-            </button>
-            <button onclick="quickJoin('upload')" class="flex items-center justify-center gap-1 bg-pink-600/80 hover:bg-pink-600 text-white font-bold py-2.5 rounded-xl text-xs transition">
-              <i data-lucide="camera" class="w-3.5 h-3.5"></i>去上傳照
-            </button>
+        <!-- 房間卡片列表網格 -->
+        <div id="myRoomsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pt-2">
+          <div class="col-span-full text-center py-12 text-gray-400 text-sm">
+            載入專屬班級中...
           </div>
         </div>
       </div>
 
-    </div>
-
-    <!-- 區塊 2: 班級相片牆清單 (Rooms List) -->
-    <div class="glass-card rounded-3xl p-6 sm:p-8 space-y-5">
-      <div class="flex items-center justify-between border-b border-white/10 pb-4">
-        <div class="flex items-center gap-3">
-          <i data-lucide="layout-grid" class="w-6 h-6 text-indigo-400"></i>
-          <div>
-            <h2 class="text-xl font-black text-white">現有班級相片牆清單</h2>
-            <p class="text-xs text-gray-400">各班級互不干擾，照片獨立存放於各自專屬代碼下</p>
-          </div>
-        </div>
-        <span id="roomCountBadge" class="text-xs font-bold px-3 py-1 bg-white/10 rounded-full text-gray-300">
-          共 0 個相片牆
-        </span>
-      </div>
-
-      <!-- 房間卡片列表網格 -->
-      <div id="roomsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pt-2">
-        <div class="col-span-full text-center py-12 text-gray-400 text-sm">
-          載入班級清單中...
-        </div>
-      </div>
     </div>
 
   </main>
 
   <!-- Footer -->
   <footer class="text-center text-xs text-gray-500 py-4 max-w-5xl mx-auto w-full border-t border-white/10">
-    <p>班級互動相片牆系統 • 支援 Google 帳號分流與 Firebase 雲端獨立儲存</p>
+    <p>班級互動相片牆系統 • Google 帳號嚴格隔離與 Firebase 雲端獨立儲存</p>
   </footer>
 
   <!-- ============================================================
-       JavaScript 邏輯
+       JavaScript 核心邏輯
   ============================================================= -->
   <script>
     const firebaseConfig = {
@@ -195,7 +221,7 @@
     let auth = null;
     let db = null;
     let currentUser = null;
-    let activeRooms = [];
+    let myRooms = [];
 
     function initFirebase() {
       if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
@@ -204,45 +230,70 @@
 
       auth.onAuthStateChanged(user => {
         currentUser = user;
-        updateAuthUI(user);
-        listenToRooms();
+        updateUIState(user);
+        if (user) {
+          listenToMyRooms(user.uid);
+        }
       });
     }
 
-    function updateAuthUI(user) {
-      const loggedOutView = document.getElementById("loggedOutView");
-      const loggedInView = document.getElementById("loggedInView");
+    function updateUIState(user) {
+      const loggedOutState = document.getElementById("loggedOutState");
+      const loggedInState = document.getElementById("loggedInState");
+      const headerUserView = document.getElementById("headerUserView");
+
       if (user) {
-        loggedOutView.classList.add("hidden");
-        loggedInView.classList.remove("hidden");
-        document.getElementById("userName").innerText = user.displayName || user.email || "教師";
-        document.getElementById("userAvatar").src = user.photoURL || "https://api.dicebear.com/7.x/bottts/svg?seed=" + user.uid;
+        loggedOutState.classList.add("hidden");
+        loggedInState.classList.remove("hidden");
+        headerUserView.classList.remove("hidden");
+        
+        document.getElementById("headerUserName").innerText = user.displayName || user.email || "教師";
+        document.getElementById("headerUserAvatar").src = user.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${user.uid}`;
       } else {
-        loggedOutView.classList.remove("hidden");
-        loggedInView.classList.add("hidden");
+        loggedOutState.classList.remove("hidden");
+        loggedInState.classList.add("hidden");
+        headerUserView.classList.add("hidden");
       }
+      lucide.createIcons();
     }
 
+    // ==========================================
+    // Google 登入處理
+    // ==========================================
     async function loginWithGoogle() {
+      const btn = document.getElementById("googleLoginBtn");
+      btn.disabled = true;
+      btn.innerHTML = `<span class="animate-spin mr-2">⏳</span><span>登入驗證中...</span>`;
+
       try {
         const provider = new firebase.auth.GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
         await auth.signInWithPopup(provider);
       } catch(err) {
-        console.warn("Google 登入取消或受限:", err.message);
-        if (err.code === "auth/configuration-not-found" || err.code === "auth/operation-not-allowed") {
-          alert("💡 提示：若 Firebase Console 尚未開啟 Google 登入，你依然可以直接建立班級房間並分流使用！");
-        } else {
+        console.error("Google 登入失敗:", err);
+        btn.disabled = false;
+        btn.innerHTML = `<span>使用 Google 帳號登入</span>`;
+
+        document.getElementById("authDiagnosticNotice").classList.remove("hidden");
+        
+        if (err.code === "auth/unauthorized-domain") {
+          alert("⚠️ 登入網域未授權：\n請前往 Firebase Console -> Authentication -> Settings -> Authorized domains 加入當前網址網域 (wethsu.github.io)！");
+        } else if (err.code === "auth/configuration-not-found" || err.code === "auth/operation-not-allowed") {
+          alert("⚠️ Firebase Authentication 尚未啟用 Google 提供者：\n請前往 Firebase Console -> Authentication 開啟 Google Sign-in！");
+        } else if (err.code !== "auth/popup-closed-by-user") {
           alert("登入提示：" + err.message);
         }
       }
     }
 
     async function logout() {
-      await auth.signOut();
+      if (confirm("確定要登出教師帳號嗎？")) {
+        await auth.signOut();
+      }
     }
 
     // ==========================================
-    // 專屬虛擬 ID 生成器 (如 sjps-0904-7a)
+    // 虛擬 ID 生成器 (格式: sjps-MMDD-XX)
     // ==========================================
     function generateRoomCode() {
       const now = new Date();
@@ -261,33 +312,38 @@
     }
 
     // ==========================================
-    // 建立新房間
+    // 建立新房間 (綁定目前登入的教師 UID)
     // ==========================================
     async function createNewRoom() {
-      const name = document.getElementById("roomNameInput").value.trim() || "未命名班級相片牆";
-      const code = document.getElementById("roomCodeInput").value.trim().toLowerCase() || generateRoomCode();
+      if (!currentUser) {
+        alert("請先登入 Google 帳號！");
+        return;
+      }
+
+      const name = document.getElementById("roomNameInput").value.trim();
+      if (!name) {
+        alert("請輸入班級或活動名稱！");
+        return;
+      }
+
+      const code = (document.getElementById("roomCodeInput").value.trim() || generateRoomCode()).toLowerCase();
 
       try {
         const roomDoc = {
           code: code,
           name: name,
-          creatorUid: currentUser ? currentUser.uid : "anonymous",
-          creatorEmail: currentUser ? currentUser.email : "現場教師",
+          creatorUid: currentUser.uid,
+          creatorEmail: currentUser.email || "教師",
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           timestamp: Date.now()
         };
 
-        await db.collection("rooms").doc(code).set(roomDoc, { merge: true });
-
-        // 本地記錄最近建立
-        let myRecent = JSON.parse(localStorage.getItem("MY_RECENT_ROOMS") || "[]");
-        if (!myRecent.includes(code)) myRecent.unshift(code);
-        localStorage.setItem("MY_RECENT_ROOMS", JSON.stringify(myRecent.slice(0, 15)));
+        await db.collection("rooms").doc(code).set(roomDoc);
 
         document.getElementById("roomNameInput").value = "";
         refreshRandomCode();
 
-        alert(`🎉 成功建立【${name}】！\n專屬代碼：${code}\n現在可以立即開啟大螢幕或發送手機上傳連結囉！`);
+        alert(`🎉 成功建立【${name}】！\n專屬代碼：${code}\n此房間已綁定至您的帳號，其他老師不會看見。`);
       } catch(err) {
         console.error("建立房間失敗:", err);
         alert("建立失敗：" + err.message);
@@ -295,57 +351,85 @@
     }
 
     // ==========================================
-    // 監聽並渲染房間清單
+    // 🗑️ 刪除班級房間與連帶照片
     // ==========================================
-    function listenToRooms() {
+    async function deleteRoom(code, name, event) {
+      if (event) event.stopPropagation();
+      if (!confirm(`⚠️ 確定要刪除【${name}】(代碼: ${code}) 嗎？\n刪除後此相片牆及其所有已上傳照片將永久清除。`)) return;
+
+      try {
+        // 1. 刪除房間本身文件
+        await db.collection("rooms").doc(code).delete();
+
+        // 2. 批次刪除該房間下的照片
+        const photosSnapshot = await db.collection("photos").where("roomId", "==", code).get();
+        const batch = db.batch();
+        photosSnapshot.forEach(doc => {
+          batch.delete(doc.ref);
+        });
+        await batch.commit();
+
+        alert(`🗑️ 已成功刪除【${name}】相片牆！`);
+      } catch(err) {
+        console.error("刪除房間失敗:", err);
+        alert("刪除失敗：" + err.message);
+      }
+    }
+
+    // ==========================================
+    // 嚴格過濾：僅監聽目前教師所建立的房間
+    // ==========================================
+    function listenToMyRooms(teacherUid) {
       db.collection("rooms")
-        .orderBy("timestamp", "desc")
-        .limit(50)
+        .where("creatorUid", "==", teacherUid)
         .onSnapshot(snapshot => {
-          activeRooms = [];
+          myRooms = [];
           snapshot.forEach(doc => {
-            activeRooms.push({ id: doc.id, ...doc.data() });
+            myRooms.push({ id: doc.id, ...doc.data() });
           });
-          renderRoomsGrid();
+          
+          // 依時間倒序
+          myRooms.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          renderMyRoomsGrid();
         }, err => {
-          console.warn("Rooms 監聽錯誤:", err);
-          // 若無權限或尚未建立集合，讀取本地建立過的房間
-          renderFallbackRooms();
+          console.error("房間監聽失敗:", err);
         });
     }
 
-    function renderRoomsGrid() {
-      const grid = document.getElementById("roomsGrid");
+    function renderMyRoomsGrid() {
+      const grid = document.getElementById("myRoomsGrid");
       grid.innerHTML = "";
-      document.getElementById("roomCountBadge").innerText = `共 ${activeRooms.length} 個相片牆`;
+      document.getElementById("myRoomCountBadge").innerText = `共 ${myRooms.length} 個相片牆`;
 
-      if (activeRooms.length === 0) {
+      if (myRooms.length === 0) {
         grid.innerHTML = `
           <div class="col-span-full text-center py-12 text-gray-400">
             <i data-lucide="inbox" class="w-10 h-10 mx-auto mb-2 opacity-40"></i>
-            <p class="text-sm">目前尚無班級相片牆，請在上列建立第一個班級！</p>
+            <p class="text-sm font-bold">您尚未建立任何班級相片牆</p>
+            <p class="text-xs text-gray-500 mt-1">請在上列填寫名稱並點擊「立即建立」！</p>
           </div>
         `;
         lucide.createIcons();
         return;
       }
 
-      activeRooms.forEach(room => {
+      myRooms.forEach(room => {
         const card = document.createElement("div");
-        card.className = "glass-panel rounded-2xl p-5 flex flex-col justify-between space-y-4 hover:border-indigo-400/50 transition duration-300 shadow-xl";
+        card.className = "glass-panel rounded-2xl p-5 flex flex-col justify-between space-y-4 hover:border-indigo-400/50 transition duration-300 shadow-xl relative group/card";
         
-        const isMine = currentUser && room.creatorUid === currentUser.uid;
-
         card.innerHTML = `
           <div>
             <div class="flex items-start justify-between gap-2">
               <span class="px-2.5 py-1 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-mono font-bold">
                 ${room.code}
               </span>
-              ${isMine ? '<span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-bold">我建立的</span>' : ''}
+              <!-- 🗑️ 刪除按鈕 -->
+              <button onclick="deleteRoom('${room.code}', '${room.name}', event)" title="刪除此相片牆" class="p-1.5 text-rose-400 hover:text-rose-200 hover:bg-rose-600/30 rounded-lg transition opacity-80 group-hover/card:opacity-100">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
             </div>
             <h3 class="text-base font-black text-white mt-2 truncate">${room.name}</h3>
-            <p class="text-xs text-gray-400 mt-0.5 font-mono">建立者: ${room.creatorEmail || '教師'}</p>
+            <p class="text-xs text-gray-400 mt-0.5 font-mono">建立時間: ${room.timestamp ? new Date(room.timestamp).toLocaleDateString() : '剛剛'}</p>
           </div>
 
           <div class="space-y-2 pt-2 border-t border-white/10">
@@ -371,21 +455,15 @@
       lucide.createIcons();
     }
 
-    function renderFallbackRooms() {
-      const myRecent = JSON.parse(localStorage.getItem("MY_RECENT_ROOMS") || "[]");
-      activeRooms = myRecent.map(code => ({ code: code, name: `相片牆 (${code})`, creatorEmail: "本機建立" }));
-      renderRoomsGrid();
-    }
-
     function copyUploadLink(code) {
       const url = `${window.location.origin}${window.location.pathname.replace(/\/[^\/]*$/, '')}/upload.html?room=${code}`;
       navigator.clipboard.writeText(url).then(() => {
-        alert(`📋 已複製【${code}】手機上傳專屬連結：\n${url}\n可直接發送給該班同學或家長！`);
+        alert(`📋 已複製【${code}】手機上傳專屬連結：\n${url}\n可直接發送給該班學生或家長！`);
       });
     }
 
-    function quickJoin(target) {
-      const code = document.getElementById("quickCodeInput").value.trim().toLowerCase();
+    function guestEnter(target) {
+      const code = document.getElementById("guestCodeInput").value.trim().toLowerCase();
       if (!code) { alert("請輸入班級代碼！"); return; }
       if (target === 'screen') {
         window.open(`screen.html?room=${code}`, '_blank');
