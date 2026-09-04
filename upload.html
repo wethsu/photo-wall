@@ -47,33 +47,7 @@
 </head>
 <body class="gradient-bg min-h-screen-dvh min-h-screen flex flex-col justify-between text-gray-800 antialiased p-4 sm:p-6">
 
-  <!-- ========================================== -->
-  <!-- Firebase 設定彈窗 (未設定時自動顯示) -->
-  <!-- ========================================== -->
-  <div id="configModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-    <div class="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-4">
-      <div class="flex items-center space-x-2 text-indigo-600">
-        <i data-lucide="settings" class="w-6 h-6"></i>
-        <h3 class="text-xl font-black">設定 Firebase 金鑰</h3>
-      </div>
-      <p class="text-xs text-gray-600 leading-relaxed">
-        尚未偵測到有效的 Firebase 設定。請將 Firebase 控制台取得的 <code class="bg-indigo-50 px-1 py-0.5 rounded text-indigo-700 font-mono">firebaseConfig</code> 物件（JSON 格式）貼在下方：
-      </p>
-      <textarea id="configInput" rows="7" placeholder='{
-  "apiKey": "AIzaSy...",
-  "authDomain": "your-app.firebaseapp.com",
-  "projectId": "your-app",
-  "storageBucket": "your-app.firebasestorage.app",
-  "messagingSenderId": "...",
-  "appId": "..."
-}' class="w-full text-xs font-mono p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"></textarea>
-      <div class="flex space-x-2">
-        <button onclick="saveCustomConfig()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition text-sm shadow-md">
-          儲存並開始使用
-        </button>
-      </div>
-    </div>
-  </div>
+
 
   <!-- Header -->
   <header class="text-center pt-2 pb-4 text-white">
