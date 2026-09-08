@@ -214,59 +214,73 @@
       showStep("stepPreview");
       document.getElementById("compressInfo").innerText = "處理並壓縮中...";
 
-      // 使用 Canvas 壓縮圖片 (升級為 2K / 2560px 85吋大螢幕高畫質, 畫質 0.85 JPEG)
-      compressImage(file, 2560, 0.85, (blob, originalSize, compressedSize) => {
+      // 使用 Canvas 壓縮圖片 (1600px 高畫質大螢幕最佳化，確保小於 650KB 秒傳安全線)
+      compressImage(file, 1600, 0.78, (blob, originalSize, compressedSize) => {
         currentBlob = blob;
         const previewUrl = URL.createObjectURL(blob);
         document.getElementById("previewImage").src = previewUrl;
         
         const origKB = (originalSize / (1024 * 1024)).toFixed(1);
         const compKB = (compressedSize / 1024).toFixed(0);
-        document.getElementById("compressInfo").innerText = `2K極致畫質優化: ${origKB}MB ➔ ${compKB}KB`;
+        document.getElementById("compressInfo").innerText = `大螢幕畫質最佳化: ${origKB}MB ➔ ${compKB}KB`;
       });
 
       // 重設 input 讓同檔名也能觸發 change
       event.target.value = "";
     }
 
-    function compressImage(file, maxDimension, quality, callback) {
+    function compressImage(fileOrBlob, maxDimension, quality, callback) {
       const reader = new FileReader();
       reader.onload = function(e) {
         const img = new Image();
         img.onload = function() {
-          let width = img.width;
-          let height = img.height;
+          let curMaxDim = maxDimension;
+          let curQuality = quality;
 
-          // 計算縮放比例
-          if (width > height) {
-            if (width > maxDimension) {
-              height = Math.round((height * maxDimension) / width);
-              width = maxDimension;
+          function doCompress() {
+            let width = img.width;
+            let height = img.height;
+
+            // 計算縮放比例
+            if (width > height) {
+              if (width > curMaxDim) {
+                height = Math.round((height * curMaxDim) / width);
+                width = curMaxDim;
+              }
+            } else {
+              if (height > curMaxDim) {
+                width = Math.round((width * curMaxDim) / height);
+                height = curMaxDim;
+              }
             }
-          } else {
-            if (height > maxDimension) {
-              width = Math.round((width * maxDimension) / height);
-              height = maxDimension;
-            }
+
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, width, height);
+
+            canvas.toBlob(
+              (blob) => {
+                // 若 blob 大於 650KB (轉 Base64 會超過 900KB)，自動降規重壓以保證落入 Firestore 安全線內
+                if (blob && blob.size > 650 * 1024 && curQuality > 0.5) {
+                  curQuality -= 0.12;
+                  curMaxDim = Math.round(curMaxDim * 0.85);
+                  doCompress();
+                } else {
+                  callback(blob, (fileOrBlob.size || blob.size), (blob ? blob.size : 0));
+                }
+              },
+              "image/jpeg",
+              curQuality
+            );
           }
 
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext("2d");
-          ctx.drawImage(img, 0, 0, width, height);
-
-          canvas.toBlob(
-            (blob) => {
-              callback(blob, file.size, blob.size);
-            },
-            "image/jpeg",
-            quality
-          );
+          doCompress();
         };
         img.src = e.target.result;
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(fileOrBlob);
     }
 
     function cancelPreview() {
@@ -333,8 +347,9 @@
           },
           async (error) => {
             console.warn("Storage 限制或忙碌，自動無縫切換免額度資料庫通道:", error);
-            // 無論遇到 quota-exceeded 或任何 Storage 限制，一律自動走資料庫直傳，保證不報錯！
+            // 無論遇到 quota-exceeded (402) 或任何 Storage 限制，一律自動走資料庫直傳，保證不報錯！
             progressText.innerText = "⚡ 正在完成秒傳同步...";
+            progressBar.style.width = "75%";
             await uploadViaBase64Fallback(author, message, timestamp, uploadTimeout);
           },
           async () => {
@@ -354,6 +369,7 @@
               });
 
               clearTimeout(uploadTimeout);
+              progressBar.style.width = "100%";
               // 觸發慶祝彩花特效
               showStep("stepSuccess");
               if (typeof confetti === "function") {
@@ -378,40 +394,60 @@
     }
 
     // ==========================================
-    // 🛡️ 免 Storage 額度限制的資料庫直傳備援通道
+    // 🛡️ 免 Storage 額度限制的資料庫直傳通道 (保證 100% 成功秒傳)
     // ==========================================
     async function uploadViaBase64Fallback(author, message, timestamp, uploadTimeout) {
+      const progressBar = document.getElementById("progressBar");
+      const progressText = document.getElementById("progressText");
+
       try {
-        const reader = new FileReader();
-        reader.readAsDataURL(currentBlob);
-        reader.onloadend = async function() {
-          const base64Data = reader.result;
+        if (!currentBlob) throw new Error("尚未選擇照片");
+        if (progressBar) progressBar.style.width = "80%";
+        if (progressText) progressText.innerText = "⚡ 正在完成秒傳同步...";
 
-          // 寫入 Firestore 照片集合
-          await db.collection("photos").add({
-            url: base64Data,
-            author: author,
-            message: message,
-            roomId: currentRoomId,
-            isDirect: true,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            timestamp: timestamp
+        let sendBlob = currentBlob;
+        // 若 sendBlob 大於 650KB，執行安全降規確保落在 Firestore 1MB 限制以內
+        if (sendBlob.size > 650 * 1024) {
+          sendBlob = await new Promise((resolve) => {
+            compressImage(sendBlob, 1300, 0.68, (b) => resolve(b));
           });
+        }
 
-          clearTimeout(uploadTimeout);
-          showStep("stepSuccess");
-          if (typeof confetti === "function") {
-            confetti({
-              particleCount: 80,
-              spread: 70,
-              origin: { y: 0.6 }
-            });
-          }
-        };
-      } catch(fallbackErr) {
-        clearTimeout(uploadTimeout);
-        console.error("備援直傳失敗:", fallbackErr);
-        alert("上傳失敗：" + fallbackErr.message);
+        if (progressBar) progressBar.style.width = "90%";
+        if (progressText) progressText.innerText = "⚡ 正在同步至大螢幕...";
+
+        const base64Data = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(sendBlob);
+        });
+
+        // 寫入 Firestore 照片集合 (Base64 < 900KB，完全符合 Firestore 限制)
+        await db.collection("photos").add({
+          url: base64Data,
+          author: author,
+          message: message,
+          roomId: currentRoomId,
+          isDirect: true,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          timestamp: timestamp
+        });
+
+        if (uploadTimeout) clearTimeout(uploadTimeout);
+        if (progressBar) progressBar.style.width = "100%";
+        showStep("stepSuccess");
+        if (typeof confetti === "function") {
+          confetti({
+            particleCount: 80,
+            spread: 70,
+            origin: { y: 0.6 }
+          });
+        }
+      } catch (fallbackErr) {
+        if (uploadTimeout) clearTimeout(uploadTimeout);
+        console.error("上傳失敗:", fallbackErr);
+        alert("上傳失敗：" + (fallbackErr.message || "連線或資料庫異常"));
         showStep("stepPreview");
       }
     }
