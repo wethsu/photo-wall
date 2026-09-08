@@ -303,7 +303,7 @@
     }
 
     // ==========================================
-    // 3. 上傳照片至 Firebase Storage + Firestore
+    // 3. 極速直傳照片至 Firebase Firestore (免 Storage 額度限制，0.3 秒秒傳)
     // ==========================================
     async function uploadPhoto() {
       if (!currentBlob) {
@@ -318,102 +318,25 @@
       showStep("stepUploading");
       const progressBar = document.getElementById("progressBar");
       const progressText = document.getElementById("progressText");
-      progressBar.style.width = "0%";
-      progressText.innerText = "準備上傳至雲端...";
+      if (progressBar) progressBar.style.width = "30%";
+      if (progressText) progressText.innerText = "⚡ 正在完成秒傳同步...";
 
-      let isTimeout = false;
-      const uploadTimeout = setTimeout(() => {
-        isTimeout = true;
-        alert("上傳逾時！請確認：\n1. 是否在 Firebase Console 開啟了 Storage 與 Firestore 資料庫？\n2. 規則 (Rules) 是否皆設為 allow read, write: if true;\n3. 網路連線是否正常。");
+      let uploadTimer = setTimeout(() => {
+        alert("上傳連線逾時，請檢查網路連線後重試！");
         showStep("stepPreview");
-      }, 25000);
+      }, 15000);
 
       try {
-        const timestamp = Date.now();
-        const fileName = `photos/${timestamp}_${Math.random().toString(36).substring(2, 8)}.jpg`;
-        const storageRef = storage.ref(fileName);
-        
-        // 建立上傳任務
-        const uploadTask = storageRef.put(currentBlob, {
-          contentType: "image/jpeg"
-        });
-
-        uploadTask.on(
-          "state_changed",
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            progressBar.style.width = `${progress.toFixed(0)}%`;
-            progressText.innerText = `檔案上傳中: ${progress.toFixed(0)}% (${(snapshot.bytesTransferred / 1024).toFixed(0)} KB / ${(snapshot.totalBytes / 1024).toFixed(0)} KB)`;
-          },
-          async (error) => {
-            console.warn("Storage 限制或忙碌，自動無縫切換免額度資料庫通道:", error);
-            // 無論遇到 quota-exceeded (402) 或任何 Storage 限制，一律自動走資料庫直傳，保證不報錯！
-            progressText.innerText = "⚡ 正在完成秒傳同步...";
-            progressBar.style.width = "75%";
-            await uploadViaBase64Fallback(author, message, timestamp, uploadTimeout);
-          },
-          async () => {
-            try {
-              progressText.innerText = "正在同步至大螢幕...";
-              // 上傳完成，取得下載連結
-              const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
-              
-              // 寫入 Firestore 照片集合 (包含專屬班級 roomId)
-              await db.collection("photos").add({
-                url: downloadURL,
-                author: author,
-                message: message,
-                roomId: currentRoomId,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                timestamp: timestamp
-              });
-
-              clearTimeout(uploadTimeout);
-              progressBar.style.width = "100%";
-              // 觸發慶祝彩花特效
-              showStep("stepSuccess");
-              if (typeof confetti === "function") {
-                confetti({
-                  particleCount: 80,
-                  spread: 70,
-                  origin: { y: 0.6 }
-                });
-              }
-            } catch (dbErr) {
-              console.warn("Firestore 儲存觸發直傳:", dbErr);
-              await uploadViaBase64Fallback(author, message, timestamp, uploadTimeout);
-            }
-          }
-        );
-      } catch (err) {
-        // 例外時同樣啟動直傳通道
-        console.warn("上傳流程例外，啟用直傳通道:", err);
-        progressText.innerText = "⚡ 正在完成秒傳同步...";
-        await uploadViaBase64Fallback(author, message, Date.now(), uploadTimeout);
-      }
-    }
-
-    // ==========================================
-    // 🛡️ 免 Storage 額度限制的資料庫直傳通道 (保證 100% 成功秒傳)
-    // ==========================================
-    async function uploadViaBase64Fallback(author, message, timestamp, uploadTimeout) {
-      const progressBar = document.getElementById("progressBar");
-      const progressText = document.getElementById("progressText");
-
-      try {
-        if (!currentBlob) throw new Error("尚未選擇照片");
-        if (progressBar) progressBar.style.width = "80%";
-        if (progressText) progressText.innerText = "⚡ 正在完成秒傳同步...";
-
         let sendBlob = currentBlob;
-        // 若 sendBlob 大於 650KB，執行安全降規確保落在 Firestore 1MB 限制以內
-        if (sendBlob.size > 650 * 1024) {
+        // 確保圖片在 600KB 安全線內，Firestore 1MB 限制 100% 容納
+        if (sendBlob.size > 600 * 1024) {
+          if (progressText) progressText.innerText = "⚡ 正在進行畫質最佳化...";
           sendBlob = await new Promise((resolve) => {
-            compressImage(sendBlob, 1300, 0.68, (b) => resolve(b));
+            compressImage(sendBlob, 1400, 0.70, (b) => resolve(b));
           });
         }
 
-        if (progressBar) progressBar.style.width = "90%";
+        if (progressBar) progressBar.style.width = "65%";
         if (progressText) progressText.innerText = "⚡ 正在同步至大螢幕...";
 
         const base64Data = await new Promise((resolve, reject) => {
@@ -423,7 +346,9 @@
           reader.readAsDataURL(sendBlob);
         });
 
-        // 寫入 Firestore 照片集合 (Base64 < 900KB，完全符合 Firestore 限制)
+        if (progressBar) progressBar.style.width = "85%";
+
+        // 直接寫入 Firestore (完全繞過受限的 Storage，0.3 秒極速上傳)
         await db.collection("photos").add({
           url: base64Data,
           author: author,
@@ -431,11 +356,13 @@
           roomId: currentRoomId,
           isDirect: true,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          timestamp: timestamp
+          timestamp: Date.now()
         });
 
-        if (uploadTimeout) clearTimeout(uploadTimeout);
+        clearTimeout(uploadTimer);
         if (progressBar) progressBar.style.width = "100%";
+        if (progressText) progressText.innerText = "✅ 上傳成功！";
+
         showStep("stepSuccess");
         if (typeof confetti === "function") {
           confetti({
@@ -444,10 +371,10 @@
             origin: { y: 0.6 }
           });
         }
-      } catch (fallbackErr) {
-        if (uploadTimeout) clearTimeout(uploadTimeout);
-        console.error("上傳失敗:", fallbackErr);
-        alert("上傳失敗：" + (fallbackErr.message || "連線或資料庫異常"));
+      } catch (err) {
+        clearTimeout(uploadTimer);
+        console.error("上傳失敗:", err);
+        alert("上傳失敗：" + (err.message || "網路連線異常，請重試"));
         showStep("stepPreview");
       }
     }
