@@ -398,12 +398,26 @@
           <!-- 模糊背景擴散 -->
           <img id="stageBgBlur" crossorigin="anonymous" src="" alt="" class="absolute inset-0 w-full h-full object-cover blur-3xl opacity-35 scale-110 pointer-events-none transition-all duration-700"/>
           
-          <!-- 大圖本體 -->
-          <div class="relative z-10 max-h-[82vh] max-w-full flex items-center justify-center rounded-2xl overflow-hidden shadow-2xl border border-white/20 group/photo">
-            <img id="mainStageImg" crossorigin="anonymous" src="" alt="焦點照片" class="max-h-[80vh] max-w-full object-contain rounded-2xl transition-all duration-500 ease-out shadow-2xl"/>
+          <!-- 大圖本體 (支援自由縮放 Zoom 與滑鼠/觸控拖曳移動 Pan) -->
+          <div id="stagePhotoWrapper" class="relative z-10 max-h-[82vh] max-w-full flex items-center justify-center rounded-2xl overflow-hidden shadow-2xl border border-white/20 group/photo select-none">
+            <img id="mainStageImg" crossorigin="anonymous" src="" alt="焦點照片" class="max-h-[80vh] max-w-full object-contain rounded-2xl transition-all duration-300 ease-out shadow-2xl will-change-transform"/>
             
+            <!-- 🔍 浮動縮放與位置重設工具列 (支援滾輪/雙擊/拖曳) -->
+            <div class="absolute top-4 right-4 z-30 flex items-center gap-1 bg-black/75 hover:bg-black/90 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-white/25 shadow-2xl transition select-none">
+              <button onclick="zoomStage(0.35, event)" title="放大檢視 (亦可滾動滑鼠滾輪向上)" class="p-1.5 text-white hover:text-indigo-400 rounded-full transition active:scale-95">
+                <i data-lucide="zoom-in" class="w-4 h-4"></i>
+              </button>
+              <button onclick="zoomStage(-0.35, event)" title="縮小檢視 (亦可滾動滑鼠滾輪向下)" class="p-1.5 text-white hover:text-indigo-400 rounded-full transition active:scale-95">
+                <i data-lucide="zoom-out" class="w-4 h-4"></i>
+              </button>
+              <button onclick="resetStageZoom(event)" title="重設為 100% 原始大小與位置 (亦可雙擊圖片)" class="flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-gray-200 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition active:scale-95">
+                <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                <span id="stageZoomBadge">100%</span>
+              </button>
+            </div>
+
             <!-- 浮層：作者、留言與操作按鈕 -->
-            <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent p-6 flex items-end justify-between text-white">
+            <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent p-6 flex items-end justify-between text-white pointer-events-none">
               <div class="space-y-1">
                 <div class="flex items-center gap-3">
                   <span id="mainAuthorTag" class="px-3.5 py-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full text-xs font-black shadow-md">上傳者</span>
@@ -413,14 +427,14 @@
               </div>
 
               <!-- 🗑️ 主舞台刪除按鈕 -->
-              <button onclick="deleteCurrentStagePhoto()" title="刪除此張照片" class="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600/80 hover:bg-rose-600 text-white rounded-xl text-xs font-bold transition shadow-lg backdrop-blur-md">
+              <button onclick="deleteCurrentStagePhoto()" title="刪除此張照片" class="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 bg-rose-600/80 hover:bg-rose-600 text-white rounded-xl text-xs font-bold transition shadow-lg backdrop-blur-md">
                 <i data-lucide="trash-2" class="w-4 h-4"></i>
                 <span>刪除</span>
               </button>
             </div>
 
             <!-- 輪播倒數進度條 -->
-            <div class="absolute bottom-0 inset-x-0 h-1 bg-white/20">
+            <div class="absolute bottom-0 inset-x-0 h-1 bg-white/20 pointer-events-none">
               <div id="slideProgressBar" class="h-full bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 w-0"></div>
             </div>
           </div>
@@ -888,6 +902,211 @@
       document.getElementById("mainTimeTag").innerText = formatPhotoTime(p);
       highlightActiveThumbnail(index);
       triggerProgressAnimation();
+      resetStageZoom();
+    }
+
+    // ==========================================
+    // 5.1 🔍 主舞台圖片自由縮放與平移 (Zoom & Pan)
+    // ==========================================
+    const stageZoom = {
+      scale: 1,
+      panX: 0,
+      panY: 0,
+      isDragging: false,
+      startX: 0,
+      startY: 0,
+      startPanX: 0,
+      startPanY: 0,
+      pinchStartDist: 0,
+      pinchStartScale: 1
+    };
+
+    function updateStageTransform(animate = false) {
+      const img = document.getElementById("mainStageImg");
+      const badge = document.getElementById("stageZoomBadge");
+      if (!img) return;
+
+      if (animate) {
+        img.style.transition = "transform 0.22s cubic-bezier(0.2, 0, 0, 1)";
+      } else {
+        img.style.transition = "none";
+      }
+
+      img.style.transform = `translate(${stageZoom.panX}px, ${stageZoom.panY}px) scale(${stageZoom.scale})`;
+
+      if (stageZoom.scale > 1 || stageZoom.panX !== 0 || stageZoom.panY !== 0) {
+        img.style.cursor = stageZoom.isDragging ? "grabbing" : "grab";
+      } else {
+        img.style.cursor = "grab";
+      }
+
+      if (badge) {
+        badge.innerText = `${Math.round(stageZoom.scale * 100)}%`;
+      }
+    }
+
+    function zoomStage(delta, e) {
+      if (e && typeof e.stopPropagation === "function") e.stopPropagation();
+      let clientX, clientY;
+      if (e && e.clientX !== undefined) {
+        clientX = e.clientX;
+        clientY = e.clientY;
+      }
+
+      const prevScale = stageZoom.scale;
+      let newScale = Math.min(5, Math.max(1, +(stageZoom.scale + delta).toFixed(2)));
+
+      if (newScale <= 1) {
+        stageZoom.scale = 1;
+        stageZoom.panX = 0;
+        stageZoom.panY = 0;
+      } else {
+        if (clientX !== undefined && clientY !== undefined) {
+          const img = document.getElementById("mainStageImg");
+          if (img) {
+            const rect = img.getBoundingClientRect();
+            const relX = clientX - (rect.left + rect.width / 2);
+            const relY = clientY - (rect.top + rect.height / 2);
+            stageZoom.panX -= (relX / prevScale) * (newScale - prevScale);
+            stageZoom.panY -= (relY / prevScale) * (newScale - prevScale);
+          }
+        }
+        stageZoom.scale = newScale;
+      }
+      updateStageTransform(true);
+    }
+
+    function resetStageZoom(e) {
+      if (e && typeof e.stopPropagation === "function") e.stopPropagation();
+      stageZoom.scale = 1;
+      stageZoom.panX = 0;
+      stageZoom.panY = 0;
+      updateStageTransform(true);
+    }
+
+    function initStageZoomAndPan() {
+      const wrapper = document.getElementById("stagePhotoWrapper");
+      const img = document.getElementById("mainStageImg");
+      if (!wrapper || !img) return;
+
+      // 1. 滑鼠滾輪縮放 (以游標位置為中心)
+      wrapper.addEventListener("wheel", (e) => {
+        if (document.body.classList.contains("drawing-mode")) return;
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.25 : -0.25;
+        zoomStage(delta, e);
+      }, { passive: false });
+
+      // 2. 滑鼠拖曳移動 (Pan)
+      const onMouseDown = (e) => {
+        if (document.body.classList.contains("drawing-mode")) return;
+        if (e.button !== 0) return; // 僅限滑鼠左鍵
+        if (e.target.closest("button")) return;
+
+        e.preventDefault();
+        stageZoom.isDragging = true;
+        stageZoom.startX = e.clientX;
+        stageZoom.startY = e.clientY;
+        stageZoom.startPanX = stageZoom.panX;
+        stageZoom.startPanY = stageZoom.panY;
+        updateStageTransform(false);
+      };
+
+      const onMouseMove = (e) => {
+        if (!stageZoom.isDragging) return;
+        stageZoom.panX = stageZoom.startPanX + (e.clientX - stageZoom.startX);
+        stageZoom.panY = stageZoom.startPanY + (e.clientY - stageZoom.startY);
+        updateStageTransform(false);
+      };
+
+      const onMouseUp = () => {
+        if (stageZoom.isDragging) {
+          stageZoom.isDragging = false;
+          updateStageTransform(false);
+        }
+      };
+
+      wrapper.addEventListener("mousedown", onMouseDown);
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
+
+      // 3. 雙擊在 1x 與 2.5x 之間快速切換
+      wrapper.addEventListener("dblclick", (e) => {
+        if (document.body.classList.contains("drawing-mode")) return;
+        if (e.target.closest("button")) return;
+        if (stageZoom.scale > 1) {
+          resetStageZoom(e);
+        } else {
+          stageZoom.scale = 2.5;
+          const rect = img.getBoundingClientRect();
+          const relX = e.clientX - (rect.left + rect.width / 2);
+          const relY = e.clientY - (rect.top + rect.height / 2);
+          stageZoom.panX = -relX * 1.5;
+          stageZoom.panY = -relY * 1.5;
+          updateStageTransform(true);
+        }
+      });
+
+      // 4. 觸控支援 (雙指 Pinch 縮放與單指自由拖曳)
+      const getTouchDistance = (t1, t2) => {
+        return Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      };
+
+      wrapper.addEventListener("touchstart", (e) => {
+        if (document.body.classList.contains("drawing-mode")) return;
+        if (e.target.closest("button")) return;
+
+        if (e.touches.length === 1) {
+          stageZoom.isDragging = true;
+          stageZoom.startX = e.touches[0].clientX;
+          stageZoom.startY = e.touches[0].clientY;
+          stageZoom.startPanX = stageZoom.panX;
+          stageZoom.startPanY = stageZoom.panY;
+          updateStageTransform(false);
+        } else if (e.touches.length === 2) {
+          stageZoom.isDragging = false;
+          stageZoom.pinchStartDist = getTouchDistance(e.touches[0], e.touches[1]);
+          stageZoom.pinchStartScale = stageZoom.scale;
+        }
+      }, { passive: true });
+
+      wrapper.addEventListener("touchmove", (e) => {
+        if (document.body.classList.contains("drawing-mode")) return;
+        if (e.touches.length === 1 && stageZoom.isDragging) {
+          e.preventDefault();
+          stageZoom.panX = stageZoom.startPanX + (e.touches[0].clientX - stageZoom.startX);
+          stageZoom.panY = stageZoom.startPanY + (e.touches[0].clientY - stageZoom.startY);
+          updateStageTransform(false);
+        } else if (e.touches.length === 2 && stageZoom.pinchStartDist > 0) {
+          e.preventDefault();
+          const dist = getTouchDistance(e.touches[0], e.touches[1]);
+          const ratio = dist / stageZoom.pinchStartDist;
+          let newScale = Math.min(5, Math.max(1, +(stageZoom.pinchStartScale * ratio).toFixed(2)));
+          stageZoom.scale = newScale;
+          if (newScale === 1) {
+            stageZoom.panX = 0;
+            stageZoom.panY = 0;
+          }
+          updateStageTransform(false);
+        }
+      }, { passive: false });
+
+      const onTouchEnd = (e) => {
+        if (e.touches.length === 0) {
+          stageZoom.isDragging = false;
+          stageZoom.pinchStartDist = 0;
+          updateStageTransform(false);
+        } else if (e.touches.length === 1) {
+          stageZoom.startX = e.touches[0].clientX;
+          stageZoom.startY = e.touches[0].clientY;
+          stageZoom.startPanX = stageZoom.panX;
+          stageZoom.startPanY = stageZoom.panY;
+          stageZoom.pinchStartDist = 0;
+        }
+      };
+
+      wrapper.addEventListener("touchend", onTouchEnd);
+      wrapper.addEventListener("touchcancel", onTouchEnd);
     }
 
     function prevPhoto() {
@@ -1704,42 +1923,50 @@
           }
         } else if (viewMode === "stage") {
           const img = document.getElementById("mainStageImg");
+          const wrapper = document.getElementById("stagePhotoWrapper") || img;
           if (img && img.src && (img.naturalWidth > 0 || img.width > 0)) {
-            const iRect = img.getBoundingClientRect();
-            const ix = Math.max(0, Math.round((iRect.left - rect.left) * dpr));
-            const iy = Math.max(0, Math.round((iRect.top - rect.top) * dpr));
-            const iw = Math.min(width, Math.round(iRect.width * dpr));
-            const ih = Math.min(height, Math.round(iRect.height * dpr));
+            const wRect = wrapper.getBoundingClientRect();
+            const wx = Math.max(0, Math.round((wRect.left - rect.left) * dpr));
+            const wy = Math.max(0, Math.round((wRect.top - rect.top) * dpr));
+            const ww = Math.min(width, Math.round(wRect.width * dpr));
+            const wh = Math.min(height, Math.round(wRect.height * dpr));
 
             ctx.save();
             const radius = Math.round(16 * dpr);
             ctx.beginPath();
-            if (ctx.roundRect) ctx.roundRect(ix, iy, iw, ih, radius);
-            else ctx.rect(ix, iy, iw, ih);
+            if (ctx.roundRect) ctx.roundRect(wx, wy, ww, wh, radius);
+            else ctx.rect(wx, wy, ww, wh);
             ctx.clip();
+
+            const iRect = img.getBoundingClientRect();
+            const ix = Math.round((iRect.left - rect.left) * dpr);
+            const iy = Math.round((iRect.top - rect.top) * dpr);
+            const iw = Math.round(iRect.width * dpr);
+            const ih = Math.round(iRect.height * dpr);
+
             await drawImageCover(ctx, img, ix, iy, iw, ih, 'contain');
             ctx.restore();
 
-            // 舞台底部作者與留言
+            // 舞台底部作者與留言 (位置固定在相框底層)
             const author = (document.getElementById("mainAuthorTag")?.innerText || "").trim();
             const msg = (document.getElementById("mainMessageText")?.innerText || "").trim();
             if (author || msg) {
               const gradH = Math.round(75 * dpr);
-              const grad = ctx.createLinearGradient(ix, iy + ih - gradH, ix, iy + ih);
+              const grad = ctx.createLinearGradient(wx, wy + wh - gradH, wx, wy + wh);
               grad.addColorStop(0, "rgba(0,0,0,0)");
               grad.addColorStop(1, "rgba(0,0,0,0.9)");
               ctx.fillStyle = grad;
-              ctx.fillRect(ix, iy + ih - gradH, iw, gradH);
+              ctx.fillRect(wx, wy + wh - gradH, ww, gradH);
 
               if (author) {
                 ctx.fillStyle = "#a855f7";
                 ctx.font = `bold ${Math.round(13 * dpr)}px 'Noto Sans TC', -apple-system, sans-serif`;
-                ctx.fillText(author, ix + Math.round(16 * dpr), iy + ih - Math.round(35 * dpr));
+                ctx.fillText(author, wx + Math.round(16 * dpr), wy + wh - Math.round(35 * dpr));
               }
               if (msg) {
                 ctx.fillStyle = "#ffffff";
                 ctx.font = `bold ${Math.round(15 * dpr)}px 'Noto Sans TC', -apple-system, sans-serif`;
-                ctx.fillText(msg, ix + Math.round(16 * dpr), iy + ih - Math.round(14 * dpr));
+                ctx.fillText(msg, wx + Math.round(16 * dpr), wy + wh - Math.round(14 * dpr));
               }
             }
           }
@@ -1882,6 +2109,7 @@
       initFirebase();
       startAutoplay();
       initDraggableToolbar();
+      initStageZoomAndPan();
 
       const unlock = () => {
         try { const A = window.AudioContext || window.webkitAudioContext; if(A) { const c = new A(); c.resume().then(() => c.close()); } } catch(e) {}
